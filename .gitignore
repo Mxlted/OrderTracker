@@ -1,0 +1,49 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+build/
+installer-output/
+
+# .NET generated files
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.nupkg
+*.snupkg
+packages/
+TestResults/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+
+# Visual Studio / Rider / VS Code local state
+.vs/
+.idea/
+.vscode/
+*.DotSettings.user
+
+# Publish and runtime artifacts
+publish/
+artifacts/
+app.publish/
+*.pdb
+*.exe
+*.dll
+*.deps.json
+*.runtimeconfig.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
