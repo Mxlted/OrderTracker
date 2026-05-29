@@ -101,6 +101,9 @@
             <Setter Property="MinHeight" Value="34"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="SelectionBrush" Value="{DynamicResource AccentDarkBrush}"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
         </Style>
 
         <Style x:Key="PlaceholderTextBoxStyle" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
@@ -156,6 +159,9 @@
             <Setter Property="MinHeight" Value="34"/>
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
             <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ComboBox}">
@@ -641,6 +647,9 @@
             <Setter Property="Padding" Value="12,7"/>
             <Setter Property="MinHeight" Value="34"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
@@ -696,6 +705,9 @@
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
@@ -758,6 +770,9 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ToggleButton}">
@@ -860,6 +875,8 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,5"/>
             <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ToolTip}">
@@ -1182,9 +1199,42 @@
             <Setter Property="FontSize" Value="11.5"/>
         </Style>
 
+        <Style x:Key="CellTextWithToolTipStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextStyle}">
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
+            <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                    <Setter Property="ToolTip" Value="{x:Null}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CompactCellTextWithToolTipStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CompactCellTextStyle}">
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
+            <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                    <Setter Property="ToolTip" Value="{x:Null}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="OrderGridItemTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextStyle}">
             <Setter Property="FontSize" Value="11.5"/>
             <Setter Property="FontStretch" Value="Condensed"/>
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
+            <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                    <Setter Property="ToolTip" Value="{x:Null}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="OrderGridSubTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource MutedTextStyle}">
@@ -1698,7 +1748,7 @@
                                                                 <ColumnDefinition Width="90"/>
                                                                 <ColumnDefinition Width="90"/>
                                                             </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Name}" Style="{StaticResource CellTextStyle}"/>
+                                                            <TextBlock Text="{Binding Name}" Style="{StaticResource CellTextWithToolTipStyle}"/>
                                                             <TextBlock Grid.Column="1" Text="{Binding Quantity}" Style="{StaticResource CellTextStyle}" TextAlignment="Right"/>
                                                             <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat=C}" Style="{StaticResource CellTextStyle}" TextAlignment="Right"/>
                                                             <TextBlock Grid.Column="3" Text="{Binding Subtotal, StringFormat=C, Mode=OneWay}" Style="{StaticResource CellTextStyle}" TextAlignment="Right"/>
@@ -1790,7 +1840,7 @@
                             <DataGridTextColumn Header="Account"
                                                 Width="94"
                                                 Binding="{Binding AccountEmail}"
-                                                ElementStyle="{StaticResource CompactCellTextStyle}"
+                                                ElementStyle="{StaticResource CompactCellTextWithToolTipStyle}"
                                                 Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
 
                             <DataGridTemplateColumn Header="Order"
@@ -1912,7 +1962,7 @@
                             <DataGridTextColumn Header="Total"
                                                 Width="74"
                                                 Binding="{Binding TotalCost, StringFormat=C, Mode=OneWay}"
-                                                ElementStyle="{StaticResource CompactCellTextStyle}"
+                                                ElementStyle="{StaticResource CompactCellTextWithToolTipStyle}"
                                                 Visibility="{Binding Data.Settings.Columns.ShowTotal, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
 
                             <DataGridTemplateColumn Header="Actions"
@@ -2274,7 +2324,7 @@
                                 <DataGridTextColumn Header="Account"
                                                     Width="160"
                                                     Binding="{Binding AccountEmail}"
-                                                    ElementStyle="{StaticResource CompactCellTextStyle}"
+                                                    ElementStyle="{StaticResource CompactCellTextWithToolTipStyle}"
                                                     Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
 
                                 <DataGridTemplateColumn Header="Order"
@@ -2370,7 +2420,7 @@
                                 <DataGridTextColumn Header="Total"
                                                     Width="82"
                                                     Binding="{Binding TotalCost, StringFormat=C, Mode=OneWay}"
-                                                    ElementStyle="{StaticResource CompactCellTextStyle}"
+                                                    ElementStyle="{StaticResource CompactCellTextWithToolTipStyle}"
                                                     Visibility="{Binding Data.Settings.Columns.ShowTotal, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
 
                                 <DataGridTemplateColumn Header="Actions"
@@ -2501,8 +2551,8 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Name" Binding="{Binding DisplayName, Mode=OneWay}" Width="*" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="220" ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding DisplayName, Mode=OneWay}" Width="*" ElementStyle="{StaticResource CellTextWithToolTipStyle}"/>
+                                    <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="220" ElementStyle="{StaticResource CellTextWithToolTipStyle}"/>
                                     <DataGridTextColumn Header="Merchant" Binding="{Binding MerchantHint}" Width="120" ElementStyle="{StaticResource CellTextStyle}"/>
                                     <DataGridTemplateColumn Header="Fav" Width="60">
                                         <DataGridTemplateColumn.CellTemplate>
