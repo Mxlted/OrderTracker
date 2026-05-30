@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Threading;
 using OrderTracker.Desktop.Commands;
 using OrderTracker.Desktop.Models;
 using OrderTracker.Desktop.Services;
@@ -17,26 +19,36 @@ namespace OrderTracker.Desktop.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
+    private static readonly TimeSpan SidebarClockDisplayOffset = TimeSpan.FromSeconds(1);
+
     private readonly AppDataStore _dataStore = new();
     private readonly BrowserLauncher _browserLauncher = new();
     private readonly DiscordWebhookService _discordWebhookService = new();
+    private readonly NetworkTimeService _networkTimeService = new();
     private readonly AppData _data;
+    private readonly DispatcherTimer _sidebarClockTimer = new();
 
     private AppPage _selectedPage = AppPage.Dashboard;
     private Order? _selectedOrder;
     private string _lastActionMessage = "Ready.";
+    private DateTime _sidebarDateTime = DateTime.Now;
+    private DateTimeOffset? _networkClockUtc;
+    private long _networkClockTimestamp;
     private string _searchText = string.Empty;
     private string _archiveSearchText = string.Empty;
     private OrderGroupOption _selectedGroup = OrderGroupOption.None;
     private OrderSortOption _selectedSort = OrderSortOption.NewestFirst;
     private bool _hideCompleted;
     private string? _editingOrderId;
+    private bool _isOrderEditorOpen;
     private AccountPreset? _selectedOrderAccountPreset;
     private AccountPreset? _selectedAccountPreset;
     private string? _editingAccountPresetId;
+    private bool _isAccountPresetEditorOpen;
     private ItemPreset? _selectedOrderPreset;
     private ItemPreset? _selectedPreset;
     private string? _editingPresetId;
+    private bool _isPresetEditorOpen;
     private bool _isBusy;
     private bool _suppressOrderChangeNotifications;
     private bool _isConfirmationOpen;
@@ -130,8 +142,10 @@ public sealed class MainViewModel : ObservableObject
 
         NavigateCommand = new RelayCommand(parameter => Navigate(parameter?.ToString()));
         NewOrderCommand = new RelayCommand(_ => BeginNewOrder());
+        ToggleQuickOrderCommand = new RelayCommand(_ => ToggleQuickOrder());
         EditOrderCommand = new RelayCommand(parameter => BeginEditOrder(parameter as Order), parameter => parameter is Order);
         SaveOrderCommand = new RelayCommand(_ => SaveOrder(), _ => CanSaveOrder);
+        CloseOrderEditorCommand = new RelayCommand(_ => CloseOrderEditor(), _ => IsOrderEditorOpen);
         DeleteOrderCommand = new RelayCommand(parameter => DeleteOrder(parameter as Order), parameter => parameter is Order);
         DuplicateOrderCommand = new RelayCommand(parameter => DuplicateOrder(parameter as Order), parameter => parameter is Order);
         ToggleCompletedCommand = new RelayCommand(parameter => ToggleCompleted(parameter as Order), parameter => parameter is Order);
@@ -158,8 +172,10 @@ public sealed class MainViewModel : ObservableObject
         CancelDialogCommand = new RelayCommand(_ => CancelDialog(), _ => IsConfirmationOpen);
 
         NewAccountPresetCommand = new RelayCommand(_ => BeginNewAccountPreset());
+        ToggleQuickAccountPresetCommand = new RelayCommand(_ => ToggleQuickAccountPreset());
         EditAccountPresetCommand = new RelayCommand(parameter => BeginEditAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         SaveAccountPresetCommand = new RelayCommand(_ => SaveAccountPreset(), _ => CanSaveAccountPreset);
+        CloseAccountPresetEditorCommand = new RelayCommand(_ => CloseAccountPresetEditor(), _ => IsAccountPresetEditorOpen);
         DeleteAccountPresetCommand = new RelayCommand(parameter => DeleteAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         DuplicateAccountPresetCommand = new RelayCommand(parameter => DuplicateAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
@@ -169,8 +185,10 @@ public sealed class MainViewModel : ObservableObject
         DeleteSelectedAccountPresetsCommand = new RelayCommand(_ => DeleteSelectedAccountPresets(), _ => SelectedAccountPresetCount > 0);
 
         NewPresetCommand = new RelayCommand(_ => BeginNewPreset());
+        ToggleQuickPresetCommand = new RelayCommand(_ => ToggleQuickPreset());
         EditPresetCommand = new RelayCommand(parameter => BeginEditPreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         SavePresetCommand = new RelayCommand(_ => SavePreset(), _ => CanSavePreset);
+        ClosePresetEditorCommand = new RelayCommand(_ => ClosePresetEditor(), _ => IsPresetEditorOpen);
         DeletePresetCommand = new RelayCommand(parameter => DeletePreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         DuplicatePresetCommand = new RelayCommand(parameter => DuplicatePreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         ApplyPresetCommand = new RelayCommand(parameter => ApplyPreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
@@ -179,13 +197,15 @@ public sealed class MainViewModel : ObservableObject
         DeleteSelectedPresetsCommand = new RelayCommand(_ => DeleteSelectedPresets(), _ => SelectedPresetCount > 0);
 
         FormItems.CollectionChanged += FormItemsCollectionChanged;
-        BeginNewOrder();
-        BeginNewAccountPreset();
-        BeginNewPreset();
+        ResetOrderForm();
+        ResetAccountPresetForm();
+        ResetPresetForm();
         ApplySortAndGroup();
         ApplyArchiveSort();
         RefreshDashboard();
         RefreshArchiveState();
+        StartSidebarClock();
+        _ = SyncSidebarClockAsync();
     }
 
     public AppSettings Settings => _data.Settings;
@@ -214,6 +234,8 @@ public sealed class MainViewModel : ObservableObject
 
     public ObservableCollection<ChartPoint> StatusBreakdown { get; } = new();
 
+    public ObservableCollection<SidebarPanelItem> SidebarAlerts { get; } = new();
+
     public ObservableCollection<OrderItem> FormItems { get; } = new();
 
     public Array Pages => Enum.GetValues<AppPage>();
@@ -234,9 +256,13 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand NewOrderCommand { get; }
 
+    public ICommand ToggleQuickOrderCommand { get; }
+
     public ICommand EditOrderCommand { get; }
 
     public ICommand SaveOrderCommand { get; }
+
+    public ICommand CloseOrderEditorCommand { get; }
 
     public ICommand DeleteOrderCommand { get; }
 
@@ -288,9 +314,13 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand NewAccountPresetCommand { get; }
 
+    public ICommand ToggleQuickAccountPresetCommand { get; }
+
     public ICommand EditAccountPresetCommand { get; }
 
     public ICommand SaveAccountPresetCommand { get; }
+
+    public ICommand CloseAccountPresetEditorCommand { get; }
 
     public ICommand DeleteAccountPresetCommand { get; }
 
@@ -308,9 +338,13 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand NewPresetCommand { get; }
 
+    public ICommand ToggleQuickPresetCommand { get; }
+
     public ICommand EditPresetCommand { get; }
 
     public ICommand SavePresetCommand { get; }
+
+    public ICommand ClosePresetEditorCommand { get; }
 
     public ICommand DeletePresetCommand { get; }
 
@@ -341,6 +375,10 @@ public sealed class MainViewModel : ObservableObject
         get => _lastActionMessage;
         set => SetProperty(ref _lastActionMessage, value ?? string.Empty);
     }
+
+    public string SidebarDate => _sidebarDateTime.ToString("dddd, MMM d", CultureInfo.CurrentCulture);
+
+    public string SidebarTime => _sidebarDateTime.ToString("h:mm:ss tt", CultureInfo.CurrentCulture);
 
     public string SearchText
     {
@@ -438,11 +476,23 @@ public sealed class MainViewModel : ObservableObject
 
     public string PresetBulkSelectionSummary => FormatSelectedCount(SelectedPresetCount, "preset");
 
+    public bool IsOrderEditorOpen
+    {
+        get => _isOrderEditorOpen;
+        private set
+        {
+            if (SetProperty(ref _isOrderEditorOpen, value))
+            {
+                RefreshEditorCommandState();
+            }
+        }
+    }
+
     public bool IsEditingOrder => !string.IsNullOrWhiteSpace(_editingOrderId);
 
     public string OrderEditorTitle => IsEditingOrder ? "Edit order" : "New order";
 
-    public bool CanSaveOrder => FormItems.Any(item => !string.IsNullOrWhiteSpace(item.Name));
+    public bool CanSaveOrder => IsOrderEditorOpen && FormItems.Any(item => !string.IsNullOrWhiteSpace(item.Name));
 
     public AccountPreset? SelectedOrderAccountPreset
     {
@@ -587,13 +637,7 @@ public sealed class MainViewModel : ObservableObject
     public ItemPreset? SelectedPreset
     {
         get => _selectedPreset;
-        set
-        {
-            if (SetProperty(ref _selectedPreset, value) && value is not null)
-            {
-                BeginEditPreset(value);
-            }
-        }
+        set => SetProperty(ref _selectedPreset, value);
     }
 
     public string PresetSearchText
@@ -610,9 +654,21 @@ public sealed class MainViewModel : ObservableObject
 
     public bool IsEditingPreset => !string.IsNullOrWhiteSpace(_editingPresetId);
 
+    public bool IsPresetEditorOpen
+    {
+        get => _isPresetEditorOpen;
+        private set
+        {
+            if (SetProperty(ref _isPresetEditorOpen, value))
+            {
+                RefreshEditorCommandState();
+            }
+        }
+    }
+
     public string PresetEditorTitle => IsEditingPreset ? "Edit preset" : "New preset";
 
-    public bool CanSavePreset => !string.IsNullOrWhiteSpace(PresetName);
+    public bool CanSavePreset => IsPresetEditorOpen && !string.IsNullOrWhiteSpace(PresetName);
 
     public string PresetName
     {
@@ -718,13 +774,7 @@ public sealed class MainViewModel : ObservableObject
     public AccountPreset? SelectedAccountPreset
     {
         get => _selectedAccountPreset;
-        set
-        {
-            if (SetProperty(ref _selectedAccountPreset, value) && value is not null)
-            {
-                BeginEditAccountPreset(value);
-            }
-        }
+        set => SetProperty(ref _selectedAccountPreset, value);
     }
 
     public string AccountPresetSearchText
@@ -741,9 +791,21 @@ public sealed class MainViewModel : ObservableObject
 
     public bool IsEditingAccountPreset => !string.IsNullOrWhiteSpace(_editingAccountPresetId);
 
+    public bool IsAccountPresetEditorOpen
+    {
+        get => _isAccountPresetEditorOpen;
+        private set
+        {
+            if (SetProperty(ref _isAccountPresetEditorOpen, value))
+            {
+                RefreshEditorCommandState();
+            }
+        }
+    }
+
     public string AccountPresetEditorTitle => IsEditingAccountPreset ? "Edit account" : "New account";
 
-    public bool CanSaveAccountPreset => !string.IsNullOrWhiteSpace(AccountPresetEmail);
+    public bool CanSaveAccountPreset => IsAccountPresetEditorOpen && !string.IsNullOrWhiteSpace(AccountPresetEmail);
 
     public string AccountPresetName
     {
@@ -903,6 +965,25 @@ public sealed class MainViewModel : ObservableObject
 
     private void BeginNewOrder()
     {
+        ResetOrderForm();
+        IsOrderEditorOpen = true;
+        SelectedPage = AppPage.Orders;
+    }
+
+    private void ToggleQuickOrder()
+    {
+        if (IsOrderEditorOpen)
+        {
+            CloseOrderEditor();
+            LastActionMessage = "Order panel closed.";
+            return;
+        }
+
+        BeginNewOrder();
+    }
+
+    private void ResetOrderForm()
+    {
         _editingOrderId = null;
         SelectedOrder = null;
         SelectedOrderAccountPreset = null;
@@ -922,6 +1003,16 @@ public sealed class MainViewModel : ObservableObject
         FormTrackingStatus = string.Empty;
         FormTrackingNumbersText = string.Empty;
         FormNotes = string.Empty;
+        OnPropertyChanged(nameof(IsEditingOrder));
+        OnPropertyChanged(nameof(OrderEditorTitle));
+    }
+
+    private void CloseOrderEditor()
+    {
+        IsOrderEditorOpen = false;
+        _editingOrderId = null;
+        SelectedOrderAccountPreset = null;
+        SelectedOrderPreset = null;
         OnPropertyChanged(nameof(IsEditingOrder));
         OnPropertyChanged(nameof(OrderEditorTitle));
     }
@@ -954,6 +1045,7 @@ public sealed class MainViewModel : ObservableObject
         FormTrackingStatus = order.TrackingStatus;
         FormTrackingNumbersText = string.Join(Environment.NewLine, order.TrackingNumbers.Select(tracking => tracking.Number));
         FormNotes = order.Notes;
+        IsOrderEditorOpen = true;
         SelectedPage = AppPage.Orders;
         OnPropertyChanged(nameof(IsEditingOrder));
         OnPropertyChanged(nameof(OrderEditorTitle));
@@ -988,7 +1080,7 @@ public sealed class MainViewModel : ObservableObject
 
         SelectedOrder = order;
         RefreshAfterOrderChange($"Order {(isNew ? "added" : "updated")}.");
-        BeginEditOrder(order);
+        CloseOrderEditor();
     }
 
     private void UpdateOrderFromForm(Order order, IEnumerable<OrderItem> items)
@@ -1095,9 +1187,14 @@ public sealed class MainViewModel : ObservableObject
         order.PropertyChanged -= OrderPropertyChanged;
         order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
         Orders.Remove(order);
-        if (SelectedOrder == order || _editingOrderId == order.Id)
+        if (SelectedOrder == order)
         {
-            BeginNewOrder();
+            SelectedOrder = null;
+        }
+
+        if (_editingOrderId == order.Id)
+        {
+            CloseOrderEditor();
         }
     }
 
@@ -1218,9 +1315,14 @@ public sealed class MainViewModel : ObservableObject
         }
 
         var editingOrder = Orders.FirstOrDefault(order => order.Id == _editingOrderId);
-        if (SelectedOrder?.IsArchived == true || editingOrder?.IsArchived == true)
+        if (SelectedOrder?.IsArchived == true)
         {
-            BeginNewOrder();
+            SelectedOrder = null;
+        }
+
+        if (editingOrder?.IsArchived == true)
+        {
+            CloseOrderEditor();
         }
 
         RefreshAfterOrderChange(message);
@@ -1661,6 +1763,11 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        if (!IsOrderEditorOpen)
+        {
+            BeginNewOrder();
+        }
+
         FormAccountEmail = preset.Email;
         if (preset.MerchantHint != MerchantKind.Unknown)
         {
@@ -1689,6 +1796,11 @@ public sealed class MainViewModel : ObservableObject
         if (preset is null)
         {
             return;
+        }
+
+        if (!IsOrderEditorOpen)
+        {
+            BeginNewOrder();
         }
 
         var target = FormItems.FirstOrDefault(item => string.IsNullOrWhiteSpace(item.Name));
@@ -1725,6 +1837,25 @@ public sealed class MainViewModel : ObservableObject
 
     private void BeginNewAccountPreset()
     {
+        ResetAccountPresetForm();
+        IsAccountPresetEditorOpen = true;
+        SelectedPage = AppPage.Accounts;
+    }
+
+    private void ToggleQuickAccountPreset()
+    {
+        if (IsAccountPresetEditorOpen)
+        {
+            CloseAccountPresetEditor();
+            LastActionMessage = "Account panel closed.";
+            return;
+        }
+
+        BeginNewAccountPreset();
+    }
+
+    private void ResetAccountPresetForm()
+    {
         _editingAccountPresetId = null;
         SelectedAccountPreset = null;
         AccountPresetName = string.Empty;
@@ -1732,6 +1863,14 @@ public sealed class MainViewModel : ObservableObject
         AccountPresetMerchantHint = MerchantKind.Unknown;
         AccountPresetIsFavorite = false;
         AccountPresetNotes = string.Empty;
+        OnPropertyChanged(nameof(IsEditingAccountPreset));
+        OnPropertyChanged(nameof(AccountPresetEditorTitle));
+    }
+
+    private void CloseAccountPresetEditor()
+    {
+        IsAccountPresetEditorOpen = false;
+        _editingAccountPresetId = null;
         OnPropertyChanged(nameof(IsEditingAccountPreset));
         OnPropertyChanged(nameof(AccountPresetEditorTitle));
     }
@@ -1744,11 +1883,14 @@ public sealed class MainViewModel : ObservableObject
         }
 
         _editingAccountPresetId = preset.Id;
+        SelectedAccountPreset = preset;
         AccountPresetName = preset.Name;
         AccountPresetEmail = preset.Email;
         AccountPresetMerchantHint = preset.MerchantHint;
         AccountPresetIsFavorite = preset.IsFavorite;
         AccountPresetNotes = preset.Notes;
+        IsAccountPresetEditorOpen = true;
+        SelectedPage = AppPage.Accounts;
         OnPropertyChanged(nameof(IsEditingAccountPreset));
         OnPropertyChanged(nameof(AccountPresetEditorTitle));
     }
@@ -1780,7 +1922,7 @@ public sealed class MainViewModel : ObservableObject
         SelectedAccountPreset = preset;
         AccountPresetsView.Refresh();
         SaveNow($"Account preset {(isNew ? "added" : "updated")}.");
-        BeginEditAccountPreset(preset);
+        CloseAccountPresetEditor();
     }
 
     private void DeleteAccountPreset(AccountPreset? preset)
@@ -1791,10 +1933,14 @@ public sealed class MainViewModel : ObservableObject
         }
 
         AccountPresets.Remove(preset);
-        if (SelectedAccountPreset == preset || _editingAccountPresetId == preset.Id)
+        if (SelectedAccountPreset == preset)
         {
             SelectedAccountPreset = null;
-            BeginNewAccountPreset();
+        }
+
+        if (_editingAccountPresetId == preset.Id)
+        {
+            CloseAccountPresetEditor();
         }
 
         SaveNow("Account preset deleted.");
@@ -1874,8 +2020,15 @@ public sealed class MainViewModel : ObservableObject
                 if (SelectedAccountPreset is not null && candidates.Contains(SelectedAccountPreset) ||
                     _editingAccountPresetId is not null && candidates.Any(preset => preset.Id == _editingAccountPresetId))
                 {
-                    SelectedAccountPreset = null;
-                    BeginNewAccountPreset();
+                    if (SelectedAccountPreset is not null && candidates.Contains(SelectedAccountPreset))
+                    {
+                        SelectedAccountPreset = null;
+                    }
+
+                    if (_editingAccountPresetId is not null && candidates.Any(preset => preset.Id == _editingAccountPresetId))
+                    {
+                        CloseAccountPresetEditor();
+                    }
                 }
 
                 AccountPresetsView.Refresh();
@@ -1887,6 +2040,25 @@ public sealed class MainViewModel : ObservableObject
     }
 
     private void BeginNewPreset()
+    {
+        ResetPresetForm();
+        IsPresetEditorOpen = true;
+        SelectedPage = AppPage.Presets;
+    }
+
+    private void ToggleQuickPreset()
+    {
+        if (IsPresetEditorOpen)
+        {
+            ClosePresetEditor();
+            LastActionMessage = "Preset panel closed.";
+            return;
+        }
+
+        BeginNewPreset();
+    }
+
+    private void ResetPresetForm()
     {
         _editingPresetId = null;
         SelectedPreset = null;
@@ -1903,6 +2075,14 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(PresetEditorTitle));
     }
 
+    private void ClosePresetEditor()
+    {
+        IsPresetEditorOpen = false;
+        _editingPresetId = null;
+        OnPropertyChanged(nameof(IsEditingPreset));
+        OnPropertyChanged(nameof(PresetEditorTitle));
+    }
+
     private void BeginEditPreset(ItemPreset? preset)
     {
         if (preset is null)
@@ -1911,6 +2091,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         _editingPresetId = preset.Id;
+        SelectedPreset = preset;
         PresetName = preset.Name;
         PresetCategory = preset.Category;
         PresetMerchantHint = preset.MerchantHint;
@@ -1920,6 +2101,8 @@ public sealed class MainViewModel : ObservableObject
         PresetDefaultTax = preset.DefaultTax;
         PresetIsFavorite = preset.IsFavorite;
         PresetNotes = preset.Notes;
+        IsPresetEditorOpen = true;
+        SelectedPage = AppPage.Presets;
         OnPropertyChanged(nameof(IsEditingPreset));
         OnPropertyChanged(nameof(PresetEditorTitle));
     }
@@ -1953,7 +2136,7 @@ public sealed class MainViewModel : ObservableObject
         SelectedPreset = preset;
         PresetsView.Refresh();
         SaveNow($"Preset {(isNew ? "added" : "updated")}.");
-        BeginEditPreset(preset);
+        ClosePresetEditor();
     }
 
     private bool TryApplyPresetNumberInputs()
@@ -1981,10 +2164,14 @@ public sealed class MainViewModel : ObservableObject
         }
 
         ItemPresets.Remove(preset);
-        if (SelectedPreset == preset || _editingPresetId == preset.Id)
+        if (SelectedPreset == preset)
         {
             SelectedPreset = null;
-            BeginNewPreset();
+        }
+
+        if (_editingPresetId == preset.Id)
+        {
+            ClosePresetEditor();
         }
 
         SaveNow("Preset deleted.");
@@ -2068,8 +2255,15 @@ public sealed class MainViewModel : ObservableObject
                 if (SelectedPreset is not null && candidates.Contains(SelectedPreset) ||
                     _editingPresetId is not null && candidates.Any(preset => preset.Id == _editingPresetId))
                 {
-                    SelectedPreset = null;
-                    BeginNewPreset();
+                    if (SelectedPreset is not null && candidates.Contains(SelectedPreset))
+                    {
+                        SelectedPreset = null;
+                    }
+
+                    if (_editingPresetId is not null && candidates.Any(preset => preset.Id == _editingPresetId))
+                    {
+                        ClosePresetEditor();
+                    }
                 }
 
                 PresetsView.Refresh();
@@ -2245,6 +2439,95 @@ public sealed class MainViewModel : ObservableObject
         ReplaceChart(YearlySpend, BuildYearlySpend());
         ReplaceChart(MerchantSpend, BuildMerchantSpend());
         ReplaceChart(StatusBreakdown, BuildStatusBreakdown());
+        RefreshSidebarAlerts();
+    }
+
+    private void RefreshSidebarAlerts()
+    {
+        ReplaceSidebarItems(SidebarAlerts, BuildSidebarAlerts());
+    }
+
+    private IEnumerable<SidebarPanelItem> BuildSidebarAlerts()
+    {
+        var today = DateTime.Today;
+        var openOrders = Orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var alerts = new List<SidebarPanelItem>();
+
+        var overdueOrders = openOrders.Count(order => order.ExpectedDate?.Date < today);
+        if (overdueOrders > 0)
+        {
+            alerts.Add(new SidebarPanelItem
+            {
+                Label = "Past expected",
+                Detail = $"{FormatSimpleCount(overdueOrders, "order")} past expected date.",
+                Accent = "#E05D5D"
+            });
+        }
+
+        var dueTodayOrders = openOrders.Count(order => order.ExpectedDate?.Date == today);
+        if (dueTodayOrders > 0)
+        {
+            alerts.Add(new SidebarPanelItem
+            {
+                Label = "Expected today",
+                Detail = $"{FormatSimpleCount(dueTodayOrders, "order")} may land today.",
+                Accent = "#FFB547"
+            });
+        }
+
+        if (CompletedOrdersReadyToArchiveCount > 0)
+        {
+            alerts.Add(new SidebarPanelItem
+            {
+                Label = "Ready to archive",
+                Detail = $"{FormatSimpleCount(CompletedOrdersReadyToArchiveCount, "order")} can move off Orders.",
+                Accent = "#2F9E7E"
+            });
+        }
+
+        var missingTrackingOrders = openOrders.Count(order => order.TrackingNumbers.Count == 0);
+        if (missingTrackingOrders > 0)
+        {
+            alerts.Add(new SidebarPanelItem
+            {
+                Label = "Missing tracking",
+                Detail = $"{FormatSimpleCount(missingTrackingOrders, "open order")} without tracking.",
+                Accent = "#7C9BFF"
+            });
+        }
+
+        var selectedCount = SelectedActiveOrderCount + SelectedArchivedOrderCount + SelectedAccountPresetCount + SelectedPresetCount;
+        if (selectedCount > 0)
+        {
+            alerts.Add(new SidebarPanelItem
+            {
+                Label = "Selection active",
+                Detail = $"{FormatSimpleCount(selectedCount, "item")} selected across pages.",
+                Accent = "#B389FF"
+            });
+        }
+
+        if (LegacyOrderItemMigrationCount > 0)
+        {
+            alerts.Add(new SidebarPanelItem
+            {
+                Label = "Config update",
+                Detail = $"{FormatSimpleCount(LegacyOrderItemMigrationCount, "order")} awaiting item migration.",
+                Accent = "#F57FB0"
+            });
+        }
+
+        return alerts.Count == 0
+            ? new[]
+            {
+                new SidebarPanelItem
+                {
+                    Label = "All clear",
+                    Detail = "No overdue, selected, or migration items.",
+                    Accent = "#2F9E7E"
+                }
+            }
+            : alerts.Take(5);
     }
 
     private IEnumerable<MetricCard> BuildMetricCards()
@@ -2462,6 +2745,58 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    private static void ReplaceSidebarItems(ObservableCollection<SidebarPanelItem> target, IEnumerable<SidebarPanelItem> source)
+    {
+        target.Clear();
+        foreach (var item in source)
+        {
+            target.Add(item);
+        }
+    }
+
+    private void StartSidebarClock()
+    {
+        UpdateSidebarClock();
+        _sidebarClockTimer.Interval = TimeSpan.FromSeconds(1);
+        _sidebarClockTimer.Tick += (_, _) => UpdateSidebarClock();
+        _sidebarClockTimer.Start();
+    }
+
+    private async Task SyncSidebarClockAsync()
+    {
+        var networkUtcTime = await _networkTimeService.TryGetUtcTimeAsync();
+        if (networkUtcTime is null)
+        {
+            return;
+        }
+
+        _networkClockUtc = networkUtcTime.Value;
+        _networkClockTimestamp = Stopwatch.GetTimestamp();
+        UpdateSidebarClock();
+    }
+
+    private void UpdateSidebarClock()
+    {
+        var previousDate = _sidebarDateTime.Date;
+        _sidebarDateTime = GetSidebarDateTime();
+        OnPropertyChanged(nameof(SidebarDate));
+        OnPropertyChanged(nameof(SidebarTime));
+
+        if (_sidebarDateTime.Date != previousDate)
+        {
+            RefreshSidebarAlerts();
+        }
+    }
+
+    private DateTime GetSidebarDateTime()
+    {
+        var utcNow = _networkClockUtc is { } networkClockUtc
+            ? networkClockUtc + Stopwatch.GetElapsedTime(_networkClockTimestamp)
+            : DateTimeOffset.UtcNow;
+
+        return (utcNow + SidebarClockDisplayOffset).ToLocalTime().DateTime;
+    }
+
     private void ShowConfirmation(
         string title,
         string message,
@@ -2517,6 +2852,12 @@ public sealed class MainViewModel : ObservableObject
             : count == 1
                 ? $"1 {singularName} selected."
                 : $"{count} {singularName}s selected.";
+    }
+
+    private static string FormatSimpleCount(int count, string singularName)
+    {
+        var noun = count == 1 ? singularName : $"{singularName}s";
+        return $"{count.ToString(CultureInfo.CurrentCulture)} {noun}";
     }
 
     private void SettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -2647,7 +2988,8 @@ public sealed class MainViewModel : ObservableObject
         }
 
         if (sender is AccountPreset accountPreset &&
-            ReferenceEquals(accountPreset, SelectedAccountPreset) &&
+            IsAccountPresetEditorOpen &&
+            accountPreset.Id == _editingAccountPresetId &&
             e.PropertyName == nameof(AccountPreset.IsFavorite))
         {
             AccountPresetIsFavorite = accountPreset.IsFavorite;
@@ -2666,7 +3008,8 @@ public sealed class MainViewModel : ObservableObject
         }
 
         if (sender is ItemPreset itemPreset &&
-            ReferenceEquals(itemPreset, SelectedPreset) &&
+            IsPresetEditorOpen &&
+            itemPreset.Id == _editingPresetId &&
             e.PropertyName == nameof(ItemPreset.IsFavorite))
         {
             PresetIsFavorite = itemPreset.IsFavorite;
@@ -2753,6 +3096,39 @@ public sealed class MainViewModel : ObservableObject
         RefreshBulkSelectionState();
     }
 
+    private void RefreshEditorCommandState()
+    {
+        if (SaveOrderCommand is RelayCommand saveOrderCommand)
+        {
+            saveOrderCommand.RaiseCanExecuteChanged();
+        }
+
+        if (CloseOrderEditorCommand is RelayCommand closeOrderEditorCommand)
+        {
+            closeOrderEditorCommand.RaiseCanExecuteChanged();
+        }
+
+        if (SaveAccountPresetCommand is RelayCommand saveAccountPresetCommand)
+        {
+            saveAccountPresetCommand.RaiseCanExecuteChanged();
+        }
+
+        if (CloseAccountPresetEditorCommand is RelayCommand closeAccountPresetEditorCommand)
+        {
+            closeAccountPresetEditorCommand.RaiseCanExecuteChanged();
+        }
+
+        if (SavePresetCommand is RelayCommand savePresetCommand)
+        {
+            savePresetCommand.RaiseCanExecuteChanged();
+        }
+
+        if (ClosePresetEditorCommand is RelayCommand closePresetEditorCommand)
+        {
+            closePresetEditorCommand.RaiseCanExecuteChanged();
+        }
+    }
+
     private void RefreshBulkSelectionState()
     {
         OnPropertyChanged(nameof(SelectedActiveOrderCount));
@@ -2777,6 +3153,7 @@ public sealed class MainViewModel : ObservableObject
         ((RelayCommand)DeleteSelectedAccountPresetsCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ClearSelectedPresetsCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DeleteSelectedPresetsCommand).RaiseCanExecuteChanged();
+        RefreshSidebarAlerts();
     }
 
     private void RefreshLegacyOrderItemMigrationState()
@@ -2784,6 +3161,7 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(LegacyOrderItemMigrationCount));
         OnPropertyChanged(nameof(LegacyOrderItemMigrationStatus));
         ((RelayCommand)MigrateLegacyOrderItemsCommand).RaiseCanExecuteChanged();
+        RefreshSidebarAlerts();
     }
 
     private void PersistIfNeeded()

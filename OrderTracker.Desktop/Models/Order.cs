@@ -84,11 +84,13 @@ public sealed class Order : ObservableObject
             if (SetProperty(ref _item, value ?? string.Empty))
             {
                 OnPropertyChanged(nameof(ItemCount));
+                OnPropertyChanged(nameof(HasItems));
                 OnPropertyChanged(nameof(ItemCountSummary));
                 OnPropertyChanged(nameof(HasMultipleItems));
                 OnPropertyChanged(nameof(HasLegacyItemFields));
                 OnPropertyChanged(nameof(PrimaryItem));
                 OnPropertyChanged(nameof(ItemsSummary));
+                OnPropertyChanged(nameof(ItemsToolTip));
             }
         }
     }
@@ -101,6 +103,7 @@ public sealed class Order : ObservableObject
             if (SetProperty(ref _quantity, Math.Max(1, value)))
             {
                 OnPropertyChanged(nameof(TotalQuantity));
+                OnPropertyChanged(nameof(ItemsToolTip));
                 OnCostChanged();
             }
         }
@@ -291,6 +294,9 @@ public sealed class Order : ObservableObject
     public int ItemCount => Items.Count > 0 ? Items.Count : string.IsNullOrWhiteSpace(Item) ? 0 : 1;
 
     [JsonIgnore]
+    public bool HasItems => ItemCount > 0;
+
+    [JsonIgnore]
     public bool HasMultipleItems => ItemCount > 1;
 
     [JsonIgnore]
@@ -325,6 +331,33 @@ public sealed class Order : ObservableObject
             return ItemCount == 1
                 ? names[0]
                 : $"{names[0]} + {ItemCount - 1} more";
+        }
+    }
+
+    [JsonIgnore]
+    public string ItemsToolTip
+    {
+        get
+        {
+            if (Items.Count == 0)
+            {
+                return string.IsNullOrWhiteSpace(Item)
+                    ? ItemCountSummary
+                    : $"{Item.Trim()} (qty {Quantity})";
+            }
+
+            var lines = Items
+                .Select(item =>
+                {
+                    var name = item.Name.Trim();
+                    return string.IsNullOrWhiteSpace(name)
+                        ? string.Empty
+                        : $"{name} (qty {item.Quantity})";
+                })
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToList();
+
+            return lines.Count == 0 ? ItemCountSummary : string.Join(Environment.NewLine, lines);
         }
     }
 
@@ -498,13 +531,20 @@ public sealed class Order : ObservableObject
 
     private void OnItemsChanged()
     {
+        if (!HasItems && IsItemsExpanded)
+        {
+            IsItemsExpanded = false;
+        }
+
         OnPropertyChanged(nameof(ItemCount));
+        OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(HasMultipleItems));
         OnPropertyChanged(nameof(HasLegacyItemFields));
         OnPropertyChanged(nameof(ItemCountSummary));
         OnPropertyChanged(nameof(TotalQuantity));
         OnPropertyChanged(nameof(PrimaryItem));
         OnPropertyChanged(nameof(ItemsSummary));
+        OnPropertyChanged(nameof(ItemsToolTip));
         OnCostChanged();
     }
 
