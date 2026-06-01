@@ -38,14 +38,13 @@ public enum CarrierKind
 
 public enum MerchantKind
 {
-    Unknown,
-    Amazon,
-    Walmart,
-    Target,
-    BestBuy,
-    eBay,
-    Etsy,
-    Other
+    Unknown = 0,
+    Amazon = 1,
+    Walmart = 2,
+    Target = 3,
+    BestBuy = 4,
+    eBay = 5,
+    Other = 7
 }
 
 public enum OrderGroupOption

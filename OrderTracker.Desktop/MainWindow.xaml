@@ -1095,10 +1095,21 @@
             </Setter>
         </Style>
 
-        <Style x:Key="OrderRowStyle" TargetType="{x:Type DataGridRow}">
-            <Setter Property="MinHeight" Value="54"/>
+        <Style x:Key="DataGridRowBaseStyle" TargetType="{x:Type DataGridRow}">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="OrderRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
+            <Setter Property="MinHeight" Value="54"/>
             <EventSetter Event="MouseDoubleClick" Handler="OrderRowDoubleClick"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
@@ -1130,20 +1141,10 @@
                     </ContextMenu>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
-        <Style x:Key="ArchiveOrderRowStyle" TargetType="{x:Type DataGridRow}">
+        <Style x:Key="ArchiveOrderRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
             <Setter Property="MinHeight" Value="54"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -1168,20 +1169,10 @@
                     </ContextMenu>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
-        <Style x:Key="PresetRowStyle" TargetType="{x:Type DataGridRow}">
+        <Style x:Key="PresetRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
             <Setter Property="MinHeight" Value="48"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -1206,20 +1197,10 @@
                     </ContextMenu>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
-        <Style x:Key="AccountPresetRowStyle" TargetType="{x:Type DataGridRow}">
+        <Style x:Key="AccountPresetRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
             <Setter Property="MinHeight" Value="48"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -1247,14 +1228,6 @@
                     </ContextMenu>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
         <Style x:Key="CellTextStyle" TargetType="{x:Type TextBlock}">

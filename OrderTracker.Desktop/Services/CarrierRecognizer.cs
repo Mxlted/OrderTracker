@@ -88,11 +88,6 @@ public static partial class CarrierRecognizer
             return MerchantKind.eBay;
         }
 
-        if (merchantText.Contains("etsy", StringComparison.OrdinalIgnoreCase))
-        {
-            return MerchantKind.Etsy;
-        }
-
         if (trackingNumbers.Any(tracking => tracking.Carrier == CarrierKind.Amazon))
         {
             return MerchantKind.Amazon;
@@ -143,7 +138,7 @@ public static partial class CarrierRecognizer
         return tracking.Carrier switch
         {
             CarrierKind.UPS => $"https://www.ups.com/track?tracknum={Uri.EscapeDataString(normalized)}",
-            CarrierKind.USPS => $"https://tools.usps.com/tracking/{Uri.EscapeDataString(normalized)}",
+            CarrierKind.USPS => $"https://tools.usps.com/go/TrackConfirmAction?tLabels={Uri.EscapeDataString(normalized)}",
             CarrierKind.FedEx => $"https://www.fedex.com/fedextrack/?trknbr={Uri.EscapeDataString(normalized)}",
             CarrierKind.Amazon when IsAmazonOrderId(order.OrderNumber) => BuildAmazonOrderUrl(order.OrderNumber),
             _ => order.OrderLink.Trim()

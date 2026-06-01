@@ -375,7 +375,6 @@ public sealed class Order : ObservableObject
         MerchantKind.Target => "T",
         MerchantKind.BestBuy => "BB",
         MerchantKind.eBay => "E",
-        MerchantKind.Etsy => "ET",
         MerchantKind.Other => "O",
         _ => "?"
     };

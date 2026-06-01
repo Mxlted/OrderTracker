@@ -14,7 +14,7 @@ public sealed class AppDataStore
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
-        Converters = { new OrderJsonConverter(), new JsonStringEnumConverter() }
+        Converters = { new OrderJsonConverter(), new MerchantKindJsonConverter(), new JsonStringEnumConverter() }
     };
 
     public string DataFilePath { get; }
@@ -147,7 +147,7 @@ public sealed class AppDataStore
 
     private static AppData CreateDefaultData()
     {
-        return new AppData
+        var data = new AppData
         {
             ItemPresets =
             {
@@ -161,6 +161,9 @@ public sealed class AppDataStore
                 }
             }
         };
+
+        NormalizeLoadedData(data);
+        return data;
     }
 
     private void TryBackUpUnreadableDataFile()
@@ -172,7 +175,7 @@ public sealed class AppDataStore
                 return;
             }
 
-            var backupPath = $"{DataFilePath}.broken-{DateTime.Now:yyyyMMdd-HHmmss}";
+            var backupPath = $"{DataFilePath}.broken-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
             File.Copy(DataFilePath, backupPath, overwrite: false);
         }
         catch

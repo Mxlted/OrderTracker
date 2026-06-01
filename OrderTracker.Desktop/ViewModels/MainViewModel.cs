@@ -51,6 +51,7 @@ public sealed class MainViewModel : ObservableObject
     private bool _isPresetEditorOpen;
     private bool _isBusy;
     private bool _suppressOrderChangeNotifications;
+    private bool _suppressPresetChangeNotifications;
     private bool _isConfirmationOpen;
     private bool _confirmationIsDanger;
     private string _confirmationTitle = string.Empty;
@@ -70,7 +71,7 @@ public sealed class MainViewModel : ObservableObject
     private string _formShippingCostInput = string.Empty;
     private string _formTaxInput = string.Empty;
     private string _formOtherCostInput = string.Empty;
-    private DateTime _formOrderDate = DateTime.Today;
+    private DateTime? _formOrderDate = DateTime.Today;
     private DateTime? _formExpectedDate;
     private DateTime? _formDeliveredDate;
     private OrderStatus _formStatus = OrderStatus.Ordered;
@@ -592,7 +593,7 @@ public sealed class MainViewModel : ObservableObject
         set => SetProperty(ref _formOtherCostInput, value ?? string.Empty);
     }
 
-    public DateTime FormOrderDate
+    public DateTime? FormOrderDate
     {
         get => _formOrderDate;
         set => SetProperty(ref _formOrderDate, value);
@@ -941,8 +942,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         var migrated = 0;
-        _suppressOrderChangeNotifications = true;
-        try
+        RunWithOrderChangeNotificationsSuppressed(() =>
         {
             foreach (var order in candidates)
             {
@@ -951,11 +951,7 @@ public sealed class MainViewModel : ObservableObject
                     migrated++;
                 }
             }
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
+        });
 
         OrdersView.Refresh();
         RefreshDashboard();
@@ -1062,16 +1058,11 @@ public sealed class MainViewModel : ObservableObject
         var isNew = order is null;
         order ??= new Order();
 
-        _suppressOrderChangeNotifications = true;
-        try
+        RunWithOrderChangeNotificationsSuppressed(() =>
         {
             UpdateOrderFromForm(order, items);
             CarrierRecognizer.ApplyRecognition(order);
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
+        });
 
         if (isNew)
         {
@@ -1093,7 +1084,7 @@ public sealed class MainViewModel : ObservableObject
         order.ShippingCost = FormShippingCost;
         order.Tax = FormTax;
         order.OtherCost = FormOtherCost;
-        order.OrderDate = FormOrderDate;
+        order.OrderDate = FormOrderDate ?? DateTime.Today;
         order.ExpectedDate = FormExpectedDate;
         order.DeliveredDate = FormDeliveredDate;
         order.Status = FormStatus;
@@ -1101,16 +1092,22 @@ public sealed class MainViewModel : ObservableObject
         order.Notes = FormNotes.Trim();
 
         order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
-        order.TrackingNumbers.Clear();
-        foreach (var trackingNumber in ParseTrackingNumbers(FormTrackingNumbersText))
+        try
         {
-            order.TrackingNumbers.Add(new TrackingEntry
+            order.TrackingNumbers.Clear();
+            foreach (var trackingNumber in ParseTrackingNumbers(FormTrackingNumbersText))
             {
-                Number = trackingNumber,
-                Status = FormTrackingStatus.Trim()
-            });
+                order.TrackingNumbers.Add(new TrackingEntry
+                {
+                    Number = trackingNumber,
+                    Status = FormTrackingStatus.Trim()
+                });
+            }
         }
-        order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
+        finally
+        {
+            order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
+        }
     }
 
     private bool TryApplyOrderInputs(out List<OrderItem> items)
@@ -1177,9 +1174,19 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        RemoveOrder(order);
+        var label = DescribeOrder(order);
 
-        RefreshAfterOrderChange("Order deleted.");
+        ShowConfirmation(
+            order.IsArchived ? "Delete archived order" : "Delete order",
+            $"Delete {label}? This permanently removes the order data.",
+            "Delete",
+            () =>
+            {
+                RemoveOrder(order);
+                RefreshAfterOrderChange($"Deleted {label}.");
+            },
+            isDanger: true,
+            cancelMessage: "Delete canceled.");
     }
 
     private void RemoveOrder(Order order)
@@ -1247,8 +1254,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         var message = "Order updated.";
-        _suppressOrderChangeNotifications = true;
-        try
+        RunWithOrderChangeNotificationsSuppressed(() =>
         {
             if (order.Status == OrderStatus.Delivered)
             {
@@ -1262,11 +1268,7 @@ public sealed class MainViewModel : ObservableObject
                 order.DeliveredDate = DateTime.Today;
                 message = "Marked order as completed.";
             }
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
+        });
 
         if (_editingOrderId == order.Id)
         {
@@ -1292,7 +1294,7 @@ public sealed class MainViewModel : ObservableObject
         var noun = candidates.Count == 1 ? "order" : "orders";
         ShowConfirmation(
             "Archive completed orders",
-            $"Archive {candidates.Count} completed {noun}? Archived orders move out of the Orders list and can be restored from the Archive page.",
+            $"Archive {candidates.Count} completed {noun}? Archived orders move out of the Orders list and can be restored from the Archive page.{FormatCandidateExamples(candidates, DescribeOrder)}",
             "Archive",
             () => ArchiveOrders(candidates, $"Archived {candidates.Count} completed {noun}."),
             cancelMessage: "Archive canceled.");
@@ -1300,19 +1302,14 @@ public sealed class MainViewModel : ObservableObject
 
     private void ArchiveOrders(IReadOnlyCollection<Order> candidates, string message)
     {
-        _suppressOrderChangeNotifications = true;
-        try
+        RunWithOrderChangeNotificationsSuppressed(() =>
         {
             foreach (var order in candidates)
             {
                 order.IsArchived = true;
                 order.IsSelected = false;
             }
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
+        });
 
         var editingOrder = Orders.FirstOrDefault(order => order.Id == _editingOrderId);
         if (SelectedOrder?.IsArchived == true)
@@ -1335,23 +1332,35 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        _suppressOrderChangeNotifications = true;
-        try
-        {
-            order.IsArchived = false;
-            order.IsSelected = false;
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
-
-        SelectedOrder = order;
-        SelectedPage = AppPage.Orders;
-
+        var label = DescribeOrder(order);
         var message = HideCompleted && order.Status == OrderStatus.Delivered
-            ? "Order restored. Turn off Hide completed to view it in Orders."
-            : "Order restored to Orders.";
+            ? $"Restored {label}. Turn off Hide completed to view it in Orders."
+            : $"Restored {label} to Orders.";
+
+        ShowConfirmation(
+            "Restore archived order",
+            $"Restore {label} to Orders? It will leave the Archive page and return to the active Orders list.",
+            "Restore",
+            () => RestoreOrders(new[] { order }, message, selectedOrder: order),
+            cancelMessage: "Restore canceled.");
+    }
+
+    private void RestoreOrders(IReadOnlyCollection<Order> candidates, string message, Order? selectedOrder = null)
+    {
+        RunWithOrderChangeNotificationsSuppressed(() =>
+        {
+            foreach (var order in candidates)
+            {
+                order.IsArchived = false;
+                order.IsSelected = false;
+            }
+        });
+
+        SelectedPage = AppPage.Orders;
+        if (selectedOrder is not null)
+        {
+            SelectedOrder = selectedOrder;
+        }
 
         RefreshAfterOrderChange(message);
     }
@@ -1392,8 +1401,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        _suppressOrderChangeNotifications = true;
-        try
+        RunWithOrderChangeNotificationsSuppressed(() =>
         {
             foreach (var order in candidates)
             {
@@ -1401,11 +1409,7 @@ public sealed class MainViewModel : ObservableObject
                 order.DeliveredDate ??= DateTime.Today;
                 order.IsSelected = false;
             }
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
+        });
 
         if (_editingOrderId is not null && candidates.Any(order => order.Id == _editingOrderId))
         {
@@ -1436,7 +1440,7 @@ public sealed class MainViewModel : ObservableObject
         var noun = candidates.Count == 1 ? "order" : "orders";
         ShowConfirmation(
             "Archive selected orders",
-            $"Archive {candidates.Count} selected completed {noun}? Archived orders move out of the Orders list and can be restored from the Archive page.",
+            $"Archive {candidates.Count} selected completed {noun}? Archived orders move out of the Orders list and can be restored from the Archive page.{FormatCandidateExamples(candidates, DescribeOrder)}",
             "Archive",
             () => ArchiveOrders(candidates, $"Archived {candidates.Count} selected {noun}."),
             cancelMessage: "Archive canceled.");
@@ -1455,26 +1459,17 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        _suppressOrderChangeNotifications = true;
-        try
-        {
-            foreach (var order in candidates)
-            {
-                order.IsArchived = false;
-                order.IsSelected = false;
-            }
-        }
-        finally
-        {
-            _suppressOrderChangeNotifications = false;
-        }
-
-        SelectedPage = AppPage.Orders;
         var noun = candidates.Count == 1 ? "order" : "orders";
         var message = HideCompleted && candidates.Any(order => order.Status == OrderStatus.Delivered)
             ? $"Restored {candidates.Count} {noun}. Turn off Hide completed to view completed orders."
             : $"Restored {candidates.Count} {noun} to Orders.";
-        RefreshAfterOrderChange(message);
+
+        ShowConfirmation(
+            "Restore selected orders",
+            $"Restore {candidates.Count} selected archived {noun} to Orders? They will leave the Archive page and return to the active Orders list.{FormatCandidateExamples(candidates, DescribeOrder)}",
+            "Restore",
+            () => RestoreOrders(candidates, message),
+            cancelMessage: "Restore canceled.");
     }
 
     private void DeleteSelectedOrders(bool includeArchived)
@@ -1495,7 +1490,7 @@ public sealed class MainViewModel : ObservableObject
         var noun = candidates.Count == 1 ? "order" : "orders";
         ShowConfirmation(
             includeArchived ? "Delete archived orders" : "Delete selected orders",
-            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected order data.",
+            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected order data.{FormatCandidateExamples(candidates, DescribeOrder)}",
             "Delete",
             () =>
             {
@@ -1596,15 +1591,34 @@ public sealed class MainViewModel : ObservableObject
 
     private void ApplyRecognitionQuietly(Order order)
     {
+        RunWithOrderChangeNotificationsSuppressed(() => CarrierRecognizer.ApplyRecognition(order));
+    }
+
+    private void RunWithOrderChangeNotificationsSuppressed(Action action)
+    {
         var previousSuppression = _suppressOrderChangeNotifications;
         _suppressOrderChangeNotifications = true;
         try
         {
-            CarrierRecognizer.ApplyRecognition(order);
+            action();
         }
         finally
         {
             _suppressOrderChangeNotifications = previousSuppression;
+        }
+    }
+
+    private void RunWithPresetChangeNotificationsSuppressed(Action action)
+    {
+        var previousSuppression = _suppressPresetChangeNotifications;
+        _suppressPresetChangeNotifications = true;
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _suppressPresetChangeNotifications = previousSuppression;
         }
     }
 
@@ -1774,7 +1788,7 @@ public sealed class MainViewModel : ObservableObject
             FormMerchant = preset.MerchantHint;
         }
 
-        preset.UsageCount++;
+        RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
         SelectedPage = AppPage.Orders;
         LastActionMessage = $"Applied account '{preset.DisplayName}'.";
         PersistIfNeeded();
@@ -1829,7 +1843,7 @@ public sealed class MainViewModel : ObservableObject
             FormMerchant = preset.MerchantHint;
         }
 
-        preset.UsageCount++;
+        RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
         SelectedPage = AppPage.Orders;
         LastActionMessage = $"Applied preset '{preset.Name}'.";
         PersistIfNeeded();
@@ -1908,11 +1922,14 @@ public sealed class MainViewModel : ObservableObject
         var isNew = preset is null;
         preset ??= new AccountPreset();
 
-        preset.Name = AccountPresetName.Trim();
-        preset.Email = email;
-        preset.MerchantHint = AccountPresetMerchantHint;
-        preset.IsFavorite = AccountPresetIsFavorite;
-        preset.Notes = AccountPresetNotes.Trim();
+        RunWithPresetChangeNotificationsSuppressed(() =>
+        {
+            preset.Name = AccountPresetName.Trim();
+            preset.Email = email;
+            preset.MerchantHint = AccountPresetMerchantHint;
+            preset.IsFavorite = AccountPresetIsFavorite;
+            preset.Notes = AccountPresetNotes.Trim();
+        });
 
         if (isNew)
         {
@@ -1932,18 +1949,31 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        AccountPresets.Remove(preset);
-        if (SelectedAccountPreset == preset)
-        {
-            SelectedAccountPreset = null;
-        }
+        var label = DescribeAccountPreset(preset);
 
-        if (_editingAccountPresetId == preset.Id)
-        {
-            CloseAccountPresetEditor();
-        }
+        ShowConfirmation(
+            "Delete account preset",
+            $"Delete {label}? This permanently removes the saved account shortcut.",
+            "Delete",
+            () =>
+            {
+                AccountPresets.Remove(preset);
+                if (SelectedAccountPreset == preset)
+                {
+                    SelectedAccountPreset = null;
+                }
 
-        SaveNow("Account preset deleted.");
+                if (_editingAccountPresetId == preset.Id)
+                {
+                    CloseAccountPresetEditor();
+                }
+
+                AccountPresetsView.Refresh();
+                RefreshBulkSelectionState();
+                SaveNow($"Deleted {label}.");
+            },
+            isDanger: true,
+            cancelMessage: "Delete canceled.");
     }
 
     private void DuplicateAccountPreset(AccountPreset? preset)
@@ -2008,7 +2038,7 @@ public sealed class MainViewModel : ObservableObject
         var noun = candidates.Count == 1 ? "account" : "accounts";
         ShowConfirmation(
             "Delete selected accounts",
-            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected account presets.",
+            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected account presets.{FormatCandidateExamples(candidates, DescribeAccountPreset)}",
             "Delete",
             () =>
             {
@@ -2118,15 +2148,18 @@ public sealed class MainViewModel : ObservableObject
         var isNew = preset is null;
         preset ??= new ItemPreset();
 
-        preset.Name = PresetName.Trim();
-        preset.Category = PresetCategory.Trim();
-        preset.MerchantHint = PresetMerchantHint;
-        preset.DefaultQuantity = PresetDefaultQuantity;
-        preset.DefaultUnitPrice = PresetDefaultUnitPrice;
-        preset.DefaultShipping = PresetDefaultShipping;
-        preset.DefaultTax = PresetDefaultTax;
-        preset.IsFavorite = PresetIsFavorite;
-        preset.Notes = PresetNotes.Trim();
+        RunWithPresetChangeNotificationsSuppressed(() =>
+        {
+            preset.Name = PresetName.Trim();
+            preset.Category = PresetCategory.Trim();
+            preset.MerchantHint = PresetMerchantHint;
+            preset.DefaultQuantity = PresetDefaultQuantity;
+            preset.DefaultUnitPrice = PresetDefaultUnitPrice;
+            preset.DefaultShipping = PresetDefaultShipping;
+            preset.DefaultTax = PresetDefaultTax;
+            preset.IsFavorite = PresetIsFavorite;
+            preset.Notes = PresetNotes.Trim();
+        });
 
         if (isNew)
         {
@@ -2163,18 +2196,31 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        ItemPresets.Remove(preset);
-        if (SelectedPreset == preset)
-        {
-            SelectedPreset = null;
-        }
+        var label = DescribeItemPreset(preset);
 
-        if (_editingPresetId == preset.Id)
-        {
-            ClosePresetEditor();
-        }
+        ShowConfirmation(
+            "Delete item preset",
+            $"Delete {label}? This permanently removes the saved item shortcut.",
+            "Delete",
+            () =>
+            {
+                ItemPresets.Remove(preset);
+                if (SelectedPreset == preset)
+                {
+                    SelectedPreset = null;
+                }
 
-        SaveNow("Preset deleted.");
+                if (_editingPresetId == preset.Id)
+                {
+                    ClosePresetEditor();
+                }
+
+                PresetsView.Refresh();
+                RefreshBulkSelectionState();
+                SaveNow($"Deleted {label}.");
+            },
+            isDanger: true,
+            cancelMessage: "Delete canceled.");
     }
 
     private void DuplicatePreset(ItemPreset? preset)
@@ -2243,7 +2289,7 @@ public sealed class MainViewModel : ObservableObject
         var noun = candidates.Count == 1 ? "preset" : "presets";
         ShowConfirmation(
             "Delete selected presets",
-            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected item presets.",
+            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected item presets.{FormatCandidateExamples(candidates, DescribeItemPreset)}",
             "Delete",
             () =>
             {
@@ -2730,7 +2776,6 @@ public sealed class MainViewModel : ObservableObject
             MerchantKind.Target => "#E05D5D",
             MerchantKind.BestBuy => "#7C9BFF",
             MerchantKind.eBay => "#B389FF",
-            MerchantKind.Etsy => "#F57FB0",
             MerchantKind.Other => "#2F9E7E",
             _ => "#6B7A90"
         };
@@ -2795,6 +2840,118 @@ public sealed class MainViewModel : ObservableObject
             : DateTimeOffset.UtcNow;
 
         return (utcNow + SidebarClockDisplayOffset).ToLocalTime().DateTime;
+    }
+
+    private static string DescribeOrder(Order order)
+    {
+        var primaryItem = order.PrimaryItem.Trim();
+        var usedItemAsAnchor = false;
+        string label;
+
+        if (!string.IsNullOrWhiteSpace(order.OrderNumber))
+        {
+            label = $"order {order.OrderNumber.Trim()}";
+        }
+        else if (!string.IsNullOrWhiteSpace(primaryItem))
+        {
+            label = $"order for '{primaryItem}'";
+            usedItemAsAnchor = true;
+        }
+        else
+        {
+            label = "this order";
+        }
+
+        var details = new List<string>();
+        if (order.Merchant != MerchantKind.Unknown)
+        {
+            details.Add(order.Merchant.ToString());
+        }
+
+        if (!usedItemAsAnchor && !string.IsNullOrWhiteSpace(primaryItem))
+        {
+            details.Add(primaryItem);
+        }
+
+        if (!string.IsNullOrWhiteSpace(order.AccountEmail))
+        {
+            details.Add(order.AccountEmail.Trim());
+        }
+
+        return details.Count == 0
+            ? label
+            : $"{label} ({string.Join(", ", details)})";
+    }
+
+    private static string DescribeAccountPreset(AccountPreset preset)
+    {
+        var displayName = preset.DisplayName.Trim();
+        var label = string.IsNullOrWhiteSpace(displayName)
+            ? "this account preset"
+            : $"account preset '{displayName}'";
+
+        var details = new List<string>();
+        if (!string.IsNullOrWhiteSpace(preset.Email) &&
+            !string.Equals(preset.Email.Trim(), displayName, StringComparison.OrdinalIgnoreCase))
+        {
+            details.Add(preset.Email.Trim());
+        }
+
+        if (preset.MerchantHint != MerchantKind.Unknown)
+        {
+            details.Add(preset.MerchantHint.ToString());
+        }
+
+        return details.Count == 0
+            ? label
+            : $"{label} ({string.Join(", ", details)})";
+    }
+
+    private static string DescribeItemPreset(ItemPreset preset)
+    {
+        var label = string.IsNullOrWhiteSpace(preset.Name)
+            ? "this item preset"
+            : $"item preset '{preset.Name.Trim()}'";
+
+        var details = new List<string>();
+        if (!string.IsNullOrWhiteSpace(preset.Category))
+        {
+            details.Add(preset.Category.Trim());
+        }
+
+        if (preset.MerchantHint != MerchantKind.Unknown)
+        {
+            details.Add(preset.MerchantHint.ToString());
+        }
+
+        return details.Count == 0
+            ? label
+            : $"{label} ({string.Join(", ", details)})";
+    }
+
+    private static string FormatCandidateExamples<T>(IReadOnlyCollection<T> candidates, Func<T, string> describe)
+    {
+        if (candidates.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var examples = candidates
+            .Take(3)
+            .Select(describe)
+            .Where(example => !string.IsNullOrWhiteSpace(example))
+            .ToList();
+
+        if (examples.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var more = candidates.Count > examples.Count
+            ? $" and {candidates.Count - examples.Count} more"
+            : string.Empty;
+        var prefix = candidates.Count == 1 ? " This affects " : " Includes ";
+        return $"{prefix}{string.Join("; ", examples)}{more}.";
     }
 
     private void ShowConfirmation(
@@ -2987,6 +3144,11 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        if (_suppressPresetChangeNotifications)
+        {
+            return;
+        }
+
         if (sender is AccountPreset accountPreset &&
             IsAccountPresetEditorOpen &&
             accountPreset.Id == _editingAccountPresetId &&
@@ -3004,6 +3166,11 @@ public sealed class MainViewModel : ObservableObject
         if (e.PropertyName == nameof(ItemPreset.IsSelected))
         {
             RefreshBulkSelectionState();
+            return;
+        }
+
+        if (_suppressPresetChangeNotifications)
+        {
             return;
         }
 

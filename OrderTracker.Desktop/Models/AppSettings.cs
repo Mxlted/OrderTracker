@@ -8,9 +8,7 @@ public sealed class AppSettings : ObservableObject
 {
     public const decimal DefaultProjectedRoiPercent = 10m;
 
-    public static IReadOnlyList<MerchantKind> ListedMerchants { get; } = Enum.GetValues<MerchantKind>()
-        .Where(IsListedMerchant)
-        .ToArray();
+    public static IReadOnlyList<MerchantKind> ListedMerchants { get; } = Enum.GetValues<MerchantKind>();
 
     private BrowserPreference _browserPreference = BrowserPreference.Default;
     private string _customBrowserPath = string.Empty;
@@ -137,10 +135,5 @@ public sealed class AppSettings : ObservableObject
                     Merchant = merchant,
                     ProjectedRoiPercent = DefaultProjectedRoiPercent
                 }));
-    }
-
-    public static bool IsListedMerchant(MerchantKind merchant)
-    {
-        return merchant != MerchantKind.Etsy;
     }
 }

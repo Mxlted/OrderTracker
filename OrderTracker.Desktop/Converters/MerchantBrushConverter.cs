@@ -17,7 +17,6 @@ public sealed class MerchantBrushConverter : IValueConverter
             MerchantKind.Target => "#E65D5D",
             MerchantKind.BestBuy => "#F7D154",
             MerchantKind.eBay => "#7CDB7C",
-            MerchantKind.Etsy => "#F58B58",
             MerchantKind.Other => "#A7B0C0",
             _ => "#5B6678"
         };
