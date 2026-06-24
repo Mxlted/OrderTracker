@@ -126,6 +126,11 @@ public sealed class AppSettings : ObservableObject
             ?? DefaultProjectedRoiPercent;
     }
 
+    public decimal GetProjectedRoiPercent(Order order)
+    {
+        return order.ProjectedRoiPercentOverride ?? GetProjectedRoiPercent(order.Merchant);
+    }
+
     public static ObservableCollection<MerchantRoiSetting> CreateDefaultMerchantProjectedRoiPercents()
     {
         return new ObservableCollection<MerchantRoiSetting>(

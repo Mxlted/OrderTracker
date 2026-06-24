@@ -85,6 +85,10 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
             {
                 order.OtherCost = ReadDecimal(ref reader, order.OtherCost);
             }
+            else if (Matches(propertyName, nameof(Order.ProjectedRoiPercentOverride)))
+            {
+                order.ProjectedRoiPercentOverride = ReadNullableDecimal(ref reader, order.ProjectedRoiPercentOverride);
+            }
             else if (Matches(propertyName, nameof(Order.OrderDate)))
             {
                 order.OrderDate = ReadDateTime(ref reader, order.OrderDate);
@@ -146,6 +150,11 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         writer.WriteNumber(nameof(Order.ShippingCost), order.ShippingCost);
         writer.WriteNumber(nameof(Order.Tax), order.Tax);
         writer.WriteNumber(nameof(Order.OtherCost), order.OtherCost);
+        if (order.ProjectedRoiPercentOverride.HasValue)
+        {
+            writer.WriteNumber(nameof(Order.ProjectedRoiPercentOverride), order.ProjectedRoiPercentOverride.Value);
+        }
+
         WriteProperty(writer, nameof(Order.OrderDate), order.OrderDate, options);
         WriteProperty(writer, nameof(Order.ExpectedDate), order.ExpectedDate, options);
         WriteProperty(writer, nameof(Order.DeliveredDate), order.DeliveredDate, options);
@@ -232,6 +241,45 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
             decimal.TryParse(reader.GetString(), NumberStyles.Currency, CultureInfo.InvariantCulture, out var invariantValue))
         {
             return invariantValue;
+        }
+
+        if (reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject)
+        {
+            reader.Skip();
+        }
+
+        return fallback;
+    }
+
+    private static decimal? ReadNullableDecimal(ref Utf8JsonReader reader, decimal? fallback)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetDecimal(out var numericValue))
+        {
+            return numericValue;
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var text = reader.GetString();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            if (decimal.TryParse(text, NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue))
+            {
+                return currentValue;
+            }
+
+            if (decimal.TryParse(text, NumberStyles.Currency, CultureInfo.InvariantCulture, out var invariantValue))
+            {
+                return invariantValue;
+            }
         }
 
         if (reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject)

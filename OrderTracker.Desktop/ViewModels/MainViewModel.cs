@@ -71,6 +71,8 @@ public sealed class MainViewModel : ObservableObject
     private string _formShippingCostInput = string.Empty;
     private string _formTaxInput = string.Empty;
     private string _formOtherCostInput = string.Empty;
+    private decimal? _formProjectedRoiPercentOverride;
+    private string _formProjectedRoiPercentInput = string.Empty;
     private DateTime? _formOrderDate = DateTime.Today;
     private DateTime? _formExpectedDate;
     private DateTime? _formDeliveredDate;
@@ -593,6 +595,23 @@ public sealed class MainViewModel : ObservableObject
         set => SetProperty(ref _formOtherCostInput, value ?? string.Empty);
     }
 
+    public decimal? FormProjectedRoiPercentOverride
+    {
+        get => _formProjectedRoiPercentOverride;
+        set
+        {
+            var normalized = value.HasValue ? Math.Max(0m, value.Value) : (decimal?)null;
+            SetProperty(ref _formProjectedRoiPercentOverride, normalized);
+            FormProjectedRoiPercentInput = FormatPercentInput(normalized);
+        }
+    }
+
+    public string FormProjectedRoiPercentInput
+    {
+        get => _formProjectedRoiPercentInput;
+        set => SetProperty(ref _formProjectedRoiPercentInput, value ?? string.Empty);
+    }
+
     public DateTime? FormOrderDate
     {
         get => _formOrderDate;
@@ -992,6 +1011,7 @@ public sealed class MainViewModel : ObservableObject
         FormShippingCost = 0m;
         FormTax = 0m;
         FormOtherCost = 0m;
+        FormProjectedRoiPercentOverride = null;
         FormOrderDate = DateTime.Today;
         FormExpectedDate = null;
         FormDeliveredDate = null;
@@ -1034,6 +1054,7 @@ public sealed class MainViewModel : ObservableObject
         FormShippingCost = order.ShippingCost;
         FormTax = order.Tax;
         FormOtherCost = order.OtherCost;
+        FormProjectedRoiPercentOverride = order.ProjectedRoiPercentOverride;
         FormOrderDate = order.OrderDate;
         FormExpectedDate = order.ExpectedDate;
         FormDeliveredDate = order.DeliveredDate;
@@ -1084,6 +1105,7 @@ public sealed class MainViewModel : ObservableObject
         order.ShippingCost = FormShippingCost;
         order.Tax = FormTax;
         order.OtherCost = FormOtherCost;
+        order.ProjectedRoiPercentOverride = FormProjectedRoiPercentOverride;
         order.OrderDate = FormOrderDate ?? DateTime.Today;
         order.ExpectedDate = FormExpectedDate;
         order.DeliveredDate = FormDeliveredDate;
@@ -1156,7 +1178,8 @@ public sealed class MainViewModel : ObservableObject
 
         if (!TryParseMoney(FormShippingCostInput, "shipping", out var shipping) ||
             !TryParseMoney(FormTaxInput, "tax", out var tax) ||
-            !TryParseMoney(FormOtherCostInput, "other cost", out var otherCost))
+            !TryParseMoney(FormOtherCostInput, "other cost", out var otherCost) ||
+            !TryParseOptionalPercent(FormProjectedRoiPercentInput, "ROI", out var projectedRoiPercentOverride))
         {
             return false;
         }
@@ -1164,6 +1187,7 @@ public sealed class MainViewModel : ObservableObject
         FormShippingCost = shipping;
         FormTax = tax;
         FormOtherCost = otherCost;
+        FormProjectedRoiPercentOverride = projectedRoiPercentOverride;
         return true;
     }
 
@@ -1232,6 +1256,7 @@ public sealed class MainViewModel : ObservableObject
             ShippingCost = order.ShippingCost,
             Tax = order.Tax,
             OtherCost = order.OtherCost,
+            ProjectedRoiPercentOverride = order.ProjectedRoiPercentOverride,
             OrderDate = DateTime.Today,
             ExpectedDate = null,
             DeliveredDate = null,
@@ -1670,6 +1695,32 @@ public sealed class MainViewModel : ObservableObject
         return false;
     }
 
+    private bool TryParseOptionalPercent(string input, string label, out decimal? value)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            value = null;
+            return true;
+        }
+
+        var text = input.Trim();
+        if (text.EndsWith("%", StringComparison.Ordinal))
+        {
+            text = text[..^1].Trim();
+        }
+
+        if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentValue) ||
+            decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out currentValue))
+        {
+            value = Math.Max(0m, currentValue);
+            return true;
+        }
+
+        LastActionMessage = $"Enter a valid {label}.";
+        value = null;
+        return false;
+    }
+
     private static string FormatQuantityInput(int value)
     {
         return value <= 1 ? string.Empty : value.ToString(CultureInfo.CurrentCulture);
@@ -1678,6 +1729,13 @@ public sealed class MainViewModel : ObservableObject
     private static string FormatMoneyInput(decimal value)
     {
         return value == 0m ? string.Empty : value.ToString("0.00", CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatPercentInput(decimal? value)
+    {
+        return value.HasValue
+            ? Math.Max(0m, value.Value).ToString("0.##", CultureInfo.CurrentCulture)
+            : string.Empty;
     }
 
     private void CopyTrackingNumbers(Order? order)
@@ -2610,7 +2668,7 @@ public sealed class MainViewModel : ObservableObject
 
     private decimal CalculateProjectedRoi(IEnumerable<Order> orders)
     {
-        return orders.Sum(order => CalculateProjectedRoi(order.TotalCost, Settings.GetProjectedRoiPercent(order.Merchant)));
+        return orders.Sum(order => CalculateProjectedRoi(order.TotalCost, Settings.GetProjectedRoiPercent(order)));
     }
 
     private static decimal CalculateProjectedRoi(decimal spend, decimal percent)

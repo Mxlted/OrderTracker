@@ -21,6 +21,7 @@ public sealed class Order : ObservableObject
     private decimal _shippingCost;
     private decimal _tax;
     private decimal _otherCost;
+    private decimal? _projectedRoiPercentOverride;
     private ObservableCollection<OrderItem> _items = new();
     private DateTime _orderDate = DateTime.Today;
     private DateTime? _expectedDate;
@@ -154,6 +155,16 @@ public sealed class Order : ObservableObject
             {
                 OnCostChanged();
             }
+        }
+    }
+
+    public decimal? ProjectedRoiPercentOverride
+    {
+        get => _projectedRoiPercentOverride;
+        set
+        {
+            var normalized = value.HasValue ? Math.Max(0m, value.Value) : (decimal?)null;
+            SetProperty(ref _projectedRoiPercentOverride, normalized);
         }
     }
 
