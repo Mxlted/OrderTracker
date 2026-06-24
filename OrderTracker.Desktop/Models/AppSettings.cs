@@ -25,6 +25,8 @@ public sealed class AppSettings : ObservableObject
     private double? _windowLeft;
     private double? _windowTop;
     private bool _isWindowMaximized;
+    private double? _browserLinkWindowWidth;
+    private double? _browserLinkWindowHeight;
 
     public BrowserPreference BrowserPreference
     {
@@ -114,6 +116,18 @@ public sealed class AppSettings : ObservableObject
     {
         get => _isWindowMaximized;
         set => SetProperty(ref _isWindowMaximized, value);
+    }
+
+    public double? BrowserLinkWindowWidth
+    {
+        get => _browserLinkWindowWidth;
+        set => SetProperty(ref _browserLinkWindowWidth, value);
+    }
+
+    public double? BrowserLinkWindowHeight
+    {
+        get => _browserLinkWindowHeight;
+        set => SetProperty(ref _browserLinkWindowHeight, value);
     }
 
     public ColumnSettings Columns { get; set; } = new();

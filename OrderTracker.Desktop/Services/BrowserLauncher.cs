@@ -4,12 +4,24 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Runtime.InteropServices;
+using Microsoft.Win32;
 using OrderTracker.Desktop.Models;
 
 namespace OrderTracker.Desktop.Services;
 
 public sealed class BrowserLauncher
 {
+    private const int SwRestore = 9;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoMove = 0x0002;
+    private const int MinimumRememberedWindowWidth = 320;
+    private const int MinimumRememberedWindowHeight = 240;
+
+    private readonly Dictionary<string, BrowserWindowReference> _openLinkWindows = new(StringComparer.OrdinalIgnoreCase);
+    private IntPtr _lastActiveLinkWindowHandle;
+
     public string OpenUrl(string url, AppSettings settings, BrowserSessionContext? sessionContext = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
@@ -28,7 +40,7 @@ public sealed class BrowserLauncher
         return OpenUrlNormally(uri, settings);
     }
 
-    private static string OpenUrlNormally(Uri uri, AppSettings settings)
+    private string OpenUrlNormally(Uri uri, AppSettings settings)
     {
         var customBrowserPath = settings.CustomBrowserPath.Trim();
         if (settings.BrowserPreference == BrowserPreference.Custom &&
@@ -37,7 +49,7 @@ public sealed class BrowserLauncher
             return "Custom browser path does not exist.";
         }
 
-        var browserPath = ResolveBrowserPath(settings);
+        var browserPath = ResolveSingleLinkBrowserPath(settings, out var browserName, out var launchKind);
 
         try
         {
@@ -48,19 +60,18 @@ public sealed class BrowserLauncher
                     FileName = uri.AbsoluteUri,
                     UseShellExecute = true
                 });
-            }
-            else
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = browserPath,
-                    UseShellExecute = false
-                };
-                startInfo.ArgumentList.Add(uri.AbsoluteUri);
-                Process.Start(startInfo);
+
+                return $"Opened {uri.Host}.";
             }
 
-            return $"Opened {uri.Host}.";
+            return OpenSingleLinkWindow(
+                uri,
+                browserPath,
+                launchKind,
+                sessionDirectory: null,
+                settings,
+                windowKey: BuildWindowKey(browserPath, sessionDirectory: null, uri),
+                openedMessage: $"Opened {uri.Host} in {browserName}.");
         }
         catch (Exception ex)
         {
@@ -68,7 +79,7 @@ public sealed class BrowserLauncher
         }
     }
 
-    private static string OpenUrlInAccountSession(Uri uri, AppSettings settings, BrowserSessionContext sessionContext)
+    private string OpenUrlInAccountSession(Uri uri, AppSettings settings, BrowserSessionContext sessionContext)
     {
         var browserPath = ResolveAccountSessionBrowserPath(settings, out var browserName);
         if (string.IsNullOrWhiteSpace(browserPath))
@@ -80,28 +91,413 @@ public sealed class BrowserLauncher
 
         try
         {
-            Directory.CreateDirectory(sessionDirectory);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = browserPath,
-                UseShellExecute = false
-            };
-            startInfo.ArgumentList.Add($"--user-data-dir={sessionDirectory}");
-            startInfo.ArgumentList.Add("--no-first-run");
-            startInfo.ArgumentList.Add("--new-window");
-            startInfo.ArgumentList.Add(uri.AbsoluteUri);
-            Process.Start(startInfo);
-
             var accountName = string.IsNullOrWhiteSpace(sessionContext.AccountDisplayName)
                 ? "account"
                 : sessionContext.AccountDisplayName.Trim();
 
-            return $"Opened {sessionContext.Merchant} for {accountName} in {browserName} account session.";
+            return OpenSingleLinkWindow(
+                uri,
+                browserPath,
+                BrowserLaunchKind.ChromiumApp,
+                sessionDirectory,
+                settings,
+                BuildWindowKey(browserPath, sessionDirectory, uri),
+                $"Opened {sessionContext.Merchant} for {accountName} in {browserName} account session.");
         }
         catch (Exception ex)
         {
             return $"Could not open account session: {ex.Message}";
+        }
+    }
+
+    private string OpenSingleLinkWindow(
+        Uri uri,
+        string browserPath,
+        BrowserLaunchKind launchKind,
+        string? sessionDirectory,
+        AppSettings settings,
+        string windowKey,
+        string openedMessage)
+    {
+        if (TryActivateExistingWindow(windowKey, uri, settings, out var activationMessage))
+        {
+            return activationMessage;
+        }
+
+        RememberLastActiveWindowSize(settings);
+
+        if (!string.IsNullOrWhiteSpace(sessionDirectory))
+        {
+            Directory.CreateDirectory(sessionDirectory);
+        }
+
+        var existingWindows = CaptureVisibleWindowHandles();
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = browserPath,
+            UseShellExecute = false
+        };
+
+        var rememberedSize = GetRememberedWindowSize(settings);
+        AddBrowserArguments(startInfo, launchKind, uri, sessionDirectory, rememberedSize);
+
+        var process = Process.Start(startInfo);
+        var windowHandle = WaitForLaunchedWindow(process, browserPath, existingWindows, TimeSpan.FromSeconds(3));
+        if (process is not null || windowHandle != IntPtr.Zero)
+        {
+            _openLinkWindows[windowKey] = new BrowserWindowReference(process, windowHandle);
+        }
+
+        if (windowHandle != IntPtr.Zero)
+        {
+            ApplyRememberedWindowSize(windowHandle, rememberedSize);
+            _lastActiveLinkWindowHandle = windowHandle;
+            RememberWindowSize(windowHandle, settings);
+        }
+
+        return openedMessage;
+    }
+
+    private bool TryActivateExistingWindow(string windowKey, Uri uri, AppSettings settings, out string message)
+    {
+        message = string.Empty;
+
+        if (!_openLinkWindows.TryGetValue(windowKey, out var reference))
+        {
+            return false;
+        }
+
+        try
+        {
+            var windowHandle = reference.WindowHandle;
+            if (windowHandle != IntPtr.Zero)
+            {
+                if (!IsWindow(windowHandle))
+                {
+                    _openLinkWindows.Remove(windowKey);
+                    return false;
+                }
+
+                BringWindowToFront(windowHandle);
+                _lastActiveLinkWindowHandle = windowHandle;
+                RememberWindowSize(windowHandle, settings);
+                message = $"Brought existing {uri.Host} window to the front.";
+                return true;
+            }
+
+            if (reference.Process is null)
+            {
+                _openLinkWindows.Remove(windowKey);
+                return false;
+            }
+
+            reference.Process.Refresh();
+
+            if (reference.Process.HasExited)
+            {
+                _openLinkWindows.Remove(windowKey);
+                return false;
+            }
+
+            windowHandle = WaitForMainWindowHandle(reference.Process, TimeSpan.FromMilliseconds(750));
+            reference.WindowHandle = windowHandle;
+
+            if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+            {
+                _openLinkWindows.Remove(windowKey);
+                return false;
+            }
+
+            BringWindowToFront(windowHandle);
+            _lastActiveLinkWindowHandle = windowHandle;
+            RememberWindowSize(windowHandle, settings);
+            message = $"Brought existing {uri.Host} window to the front.";
+            return true;
+        }
+        catch
+        {
+            _openLinkWindows.Remove(windowKey);
+            return false;
+        }
+    }
+
+    private static void BringWindowToFront(IntPtr windowHandle)
+    {
+        if (IsIconic(windowHandle))
+        {
+            ShowWindow(windowHandle, SwRestore);
+        }
+
+        SetForegroundWindow(windowHandle);
+    }
+
+    private void RememberLastActiveWindowSize(AppSettings settings)
+    {
+        if (_lastActiveLinkWindowHandle != IntPtr.Zero && IsWindow(_lastActiveLinkWindowHandle))
+        {
+            RememberWindowSize(_lastActiveLinkWindowHandle, settings);
+        }
+    }
+
+    private static void RememberWindowSize(IntPtr windowHandle, AppSettings settings)
+    {
+        if (!TryGetWindowSize(windowHandle, out var width, out var height))
+        {
+            return;
+        }
+
+        if (!IsUsableWindowSize(width, height))
+        {
+            return;
+        }
+
+        if (settings.BrowserLinkWindowWidth != width)
+        {
+            settings.BrowserLinkWindowWidth = width;
+        }
+
+        if (settings.BrowserLinkWindowHeight != height)
+        {
+            settings.BrowserLinkWindowHeight = height;
+        }
+    }
+
+    private static BrowserWindowSize? GetRememberedWindowSize(AppSettings settings)
+    {
+        if (settings.BrowserLinkWindowWidth is not { } widthValue ||
+            settings.BrowserLinkWindowHeight is not { } heightValue)
+        {
+            return null;
+        }
+
+        var width = (int)Math.Round(widthValue);
+        var height = (int)Math.Round(heightValue);
+
+        return IsUsableWindowSize(width, height)
+            ? new BrowserWindowSize(width, height)
+            : null;
+    }
+
+    private static void ApplyRememberedWindowSize(IntPtr windowHandle, BrowserWindowSize? windowSize)
+    {
+        if (windowSize is null || !IsWindow(windowHandle))
+        {
+            return;
+        }
+
+        SetWindowPos(
+            windowHandle,
+            IntPtr.Zero,
+            0,
+            0,
+            windowSize.Value.Width,
+            windowSize.Value.Height,
+            SwpNoMove | SwpNoZOrder | SwpNoActivate);
+    }
+
+    private static bool TryGetWindowSize(IntPtr windowHandle, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+
+        if (!GetWindowRect(windowHandle, out var rect))
+        {
+            return false;
+        }
+
+        width = rect.Right - rect.Left;
+        height = rect.Bottom - rect.Top;
+        return true;
+    }
+
+    private static bool IsUsableWindowSize(int width, int height)
+    {
+        return width >= MinimumRememberedWindowWidth &&
+               height >= MinimumRememberedWindowHeight;
+    }
+
+    private static IntPtr WaitForLaunchedWindow(Process? process, string browserPath, HashSet<IntPtr> existingWindows, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        do
+        {
+            if (process is not null)
+            {
+                process.Refresh();
+
+                if (!process.HasExited)
+                {
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                    {
+                        return process.MainWindowHandle;
+                    }
+
+                    var processWindowHandle = FindVisibleWindowForProcess(process.Id);
+                    if (processWindowHandle != IntPtr.Zero)
+                    {
+                        return processWindowHandle;
+                    }
+                }
+            }
+
+            var newWindowHandle = FindNewVisibleBrowserWindow(existingWindows, browserPath);
+            if (newWindowHandle != IntPtr.Zero)
+            {
+                return newWindowHandle;
+            }
+
+            Thread.Sleep(100);
+        }
+        while (DateTime.UtcNow < deadline);
+
+        return IntPtr.Zero;
+    }
+
+    private static void AddBrowserArguments(
+        ProcessStartInfo startInfo,
+        BrowserLaunchKind launchKind,
+        Uri uri,
+        string? sessionDirectory,
+        BrowserWindowSize? rememberedSize)
+    {
+        switch (launchKind)
+        {
+            case BrowserLaunchKind.ChromiumApp:
+                if (!string.IsNullOrWhiteSpace(sessionDirectory))
+                {
+                    startInfo.ArgumentList.Add($"--user-data-dir={sessionDirectory}");
+                }
+
+                startInfo.ArgumentList.Add("--no-first-run");
+                startInfo.ArgumentList.Add("--no-default-browser-check");
+                startInfo.ArgumentList.Add("--disable-session-crashed-bubble");
+                if (rememberedSize is { } chromiumSize)
+                {
+                    startInfo.ArgumentList.Add($"--window-size={chromiumSize.Width},{chromiumSize.Height}");
+                }
+
+                startInfo.ArgumentList.Add($"--app={uri.AbsoluteUri}");
+                break;
+
+            case BrowserLaunchKind.FirefoxWindow:
+                startInfo.ArgumentList.Add("-new-window");
+                startInfo.ArgumentList.Add(uri.AbsoluteUri);
+                break;
+
+            default:
+                startInfo.ArgumentList.Add(uri.AbsoluteUri);
+                break;
+        }
+    }
+
+    private static IntPtr WaitForMainWindowHandle(Process process, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        do
+        {
+            process.Refresh();
+
+            if (process.HasExited)
+            {
+                return IntPtr.Zero;
+            }
+
+            if (process.MainWindowHandle != IntPtr.Zero)
+            {
+                return process.MainWindowHandle;
+            }
+
+            var windowHandle = FindVisibleWindowForProcess(process.Id);
+            if (windowHandle != IntPtr.Zero)
+            {
+                return windowHandle;
+            }
+
+            Thread.Sleep(100);
+        }
+        while (DateTime.UtcNow < deadline);
+
+        return IntPtr.Zero;
+    }
+
+    private static IntPtr FindVisibleWindowForProcess(int processId)
+    {
+        var result = IntPtr.Zero;
+
+        EnumWindows((windowHandle, _) =>
+        {
+            if (!IsWindowVisible(windowHandle))
+            {
+                return true;
+            }
+
+            GetWindowThreadProcessId(windowHandle, out var windowProcessId);
+            if (windowProcessId != processId)
+            {
+                return true;
+            }
+
+            result = windowHandle;
+            return false;
+        }, IntPtr.Zero);
+
+        return result;
+    }
+
+    private static HashSet<IntPtr> CaptureVisibleWindowHandles()
+    {
+        var handles = new HashSet<IntPtr>();
+
+        EnumWindows((windowHandle, _) =>
+        {
+            if (IsWindowVisible(windowHandle))
+            {
+                handles.Add(windowHandle);
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return handles;
+    }
+
+    private static IntPtr FindNewVisibleBrowserWindow(HashSet<IntPtr> existingWindows, string browserPath)
+    {
+        var result = IntPtr.Zero;
+        var browserProcessName = Path.GetFileNameWithoutExtension(browserPath);
+
+        EnumWindows((windowHandle, _) =>
+        {
+            if (existingWindows.Contains(windowHandle) || !IsWindowVisible(windowHandle))
+            {
+                return true;
+            }
+
+            GetWindowThreadProcessId(windowHandle, out var windowProcessId);
+            if (!IsProcessName(windowProcessId, browserProcessName))
+            {
+                return true;
+            }
+
+            result = windowHandle;
+            return false;
+        }, IntPtr.Zero);
+
+        return result;
+    }
+
+    private static bool IsProcessName(int processId, string expectedProcessName)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.ProcessName.Equals(expectedProcessName, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -127,6 +523,40 @@ public sealed class BrowserLauncher
         }
 
         return string.Empty;
+    }
+
+    private static string ResolveSingleLinkBrowserPath(AppSettings settings, out string browserName, out BrowserLaunchKind launchKind)
+    {
+        browserName = GetBrowserName(settings.BrowserPreference);
+        launchKind = BrowserLaunchKind.StandardWindow;
+
+        if (settings.BrowserPreference == BrowserPreference.Default)
+        {
+            var defaultPreference = ResolveDefaultBrowserPreference();
+            if (defaultPreference.HasValue)
+            {
+                foreach (var candidate in GetBrowserCandidates(defaultPreference.Value))
+                {
+                    if (File.Exists(candidate))
+                    {
+                        browserName = GetBrowserName(defaultPreference.Value);
+                        launchKind = GetLaunchKind(defaultPreference.Value, candidate);
+                        return candidate;
+                    }
+                }
+            }
+
+            return string.Empty;
+        }
+
+        var browserPath = ResolveBrowserPath(settings);
+        if (string.IsNullOrWhiteSpace(browserPath))
+        {
+            return string.Empty;
+        }
+
+        launchKind = GetLaunchKind(settings.BrowserPreference, browserPath);
+        return browserPath;
     }
 
     private static string ResolveAccountSessionBrowserPath(AppSettings settings, out string browserName)
@@ -168,6 +598,85 @@ public sealed class BrowserLauncher
         }
 
         return string.Empty;
+    }
+
+    private static BrowserLaunchKind GetLaunchKind(BrowserPreference preference, string browserPath)
+    {
+        if (preference == BrowserPreference.Firefox || IsFirefoxBrowserPath(browserPath))
+        {
+            return BrowserLaunchKind.FirefoxWindow;
+        }
+
+        if (preference is BrowserPreference.Chrome or BrowserPreference.Edge or BrowserPreference.Brave ||
+            IsChromiumBrowserPath(browserPath))
+        {
+            return BrowserLaunchKind.ChromiumApp;
+        }
+
+        return BrowserLaunchKind.StandardWindow;
+    }
+
+    private static BrowserPreference? ResolveDefaultBrowserPreference()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice");
+            var progId = key?.GetValue("ProgId") as string;
+            if (string.IsNullOrWhiteSpace(progId))
+            {
+                return null;
+            }
+
+            if (progId.Contains("MSEdge", StringComparison.OrdinalIgnoreCase))
+            {
+                return BrowserPreference.Edge;
+            }
+
+            if (progId.Contains("Chrome", StringComparison.OrdinalIgnoreCase))
+            {
+                return BrowserPreference.Chrome;
+            }
+
+            if (progId.Contains("Brave", StringComparison.OrdinalIgnoreCase))
+            {
+                return BrowserPreference.Brave;
+            }
+
+            if (progId.Contains("Firefox", StringComparison.OrdinalIgnoreCase))
+            {
+                return BrowserPreference.Firefox;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static bool IsChromiumBrowserPath(string browserPath)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(browserPath);
+        return fileName.Contains("chrome", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Contains("msedge", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Contains("brave", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Contains("chromium", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsFirefoxBrowserPath(string browserPath)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(browserPath);
+        return fileName.Contains("firefox", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildWindowKey(string browserPath, string? sessionDirectory, Uri uri)
+    {
+        return string.Join(
+            "|",
+            browserPath.Trim().ToLowerInvariant(),
+            (sessionDirectory ?? string.Empty).Trim().ToLowerInvariant(),
+            uri.AbsoluteUri.Trim().ToLowerInvariant());
     }
 
     private static string GetSessionDirectory(BrowserSessionContext sessionContext)
@@ -229,6 +738,66 @@ public sealed class BrowserLauncher
             },
             _ => Array.Empty<string>()
         };
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out WindowRect lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    private readonly record struct BrowserWindowSize(int Width, int Height);
+
+    private sealed class BrowserWindowReference
+    {
+        public BrowserWindowReference(Process? process, IntPtr windowHandle)
+        {
+            Process = process;
+            WindowHandle = windowHandle;
+        }
+
+        public Process? Process { get; }
+
+        public IntPtr WindowHandle { get; set; }
+    }
+
+    private enum BrowserLaunchKind
+    {
+        ChromiumApp,
+        FirefoxWindow,
+        StandardWindow
     }
 }
 
