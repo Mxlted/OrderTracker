@@ -7,7 +7,9 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using OrderTracker.Desktop.Models;
+using OrderTracker.Desktop.Utilities;
 using OrderTracker.Desktop.ViewModels;
 
 namespace OrderTracker.Desktop;
@@ -15,6 +17,9 @@ namespace OrderTracker.Desktop;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
+    private readonly List<ScrollRailBinding> _scrollRailBindings = new();
+    private bool _scrollRailBindingsInitialized;
+
     public static readonly RoutedUICommand SelectHighlightedRowsCommand = new(
         "Select",
         nameof(SelectHighlightedRowsCommand),
@@ -46,9 +51,9 @@ public partial class MainWindow : Window
         ["RowHoverBrush"] = ("#E6F4FB", "#24282E", "#141414"),
         ["RowSelectedBrush"] = ("#CFEAF7", "#1F3D57", "#06263A"),
         ["ProgressTrackBrush"] = ("#DDE6EF", "#181A1E", "#101010"),
-        ["ScrollBarTrackBrush"] = ("#E8EEF5", "#15171A", "#000000"),
-        ["ScrollBarThumbBrush"] = ("#A7B6C7", "#4C545E", "#343434"),
-        ["ScrollBarThumbHoverBrush"] = ("#7F91A8", "#646E7B", "#565656"),
+        ["ScrollBarTrackBrush"] = ("#D9E3EE", "#1E2227", "#151515"),
+        ["ScrollBarThumbBrush"] = ("#7E91A8", "#6A7482", "#565656"),
+        ["ScrollBarThumbHoverBrush"] = ("#5F758E", "#8793A3", "#787878"),
         ["LinkHoverBrush"] = ("#005E92", "#9ADFFF", "#7DE7FF"),
         ["ChipTextBrush"] = ("#FFFFFF", "#0F1114", "#010101"),
         ["TrackingChipBrush"] = ("#E6F5FB", "#172838", "#061923"),
@@ -69,6 +74,8 @@ public partial class MainWindow : Window
             UnselectHighlightedRowsExecuted,
             CanToggleHighlightedRowsSelection));
         _viewModel.Settings.PropertyChanged += SettingsPropertyChanged;
+        Loaded += MainWindowLoaded;
+        SizeChanged += MainWindowSizeChanged;
         ApplyTheme(_viewModel.Settings.Theme);
         ApplyWindowPlacement();
     }
@@ -85,6 +92,68 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(AppSettings.Theme))
         {
             ApplyTheme(_viewModel.Settings.Theme);
+        }
+    }
+
+    private void MainWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        InitializeScrollRailBindings();
+        RefreshScrollRailBindings();
+        Dispatcher.BeginInvoke(
+            (Action)RefreshScrollRailBindings,
+            DispatcherPriority.ContextIdle);
+    }
+
+    private void MainWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        RefreshScrollRailThumbs();
+    }
+
+    private void InitializeScrollRailBindings()
+    {
+        if (_scrollRailBindingsInitialized)
+        {
+            return;
+        }
+
+        _scrollRailBindingsInitialized = true;
+        AddScrollRailBinding(SidebarStatusScrollViewer, SidebarStatusScrollRail, SidebarStatusScrollColumn, SidebarStatusScrollCanvas, SidebarStatusScrollThumb);
+        AddScrollRailBinding(DashboardScrollViewer, DashboardScrollRail, DashboardScrollColumn, DashboardScrollCanvas, DashboardScrollThumb);
+        AddScrollRailBinding(OrdersGrid, OrdersScrollRail, OrdersScrollColumn, OrdersScrollCanvas, OrdersScrollThumb);
+        AddScrollRailBinding(OrderEditorScrollViewer, OrderEditorScrollRail, OrderEditorScrollColumn, OrderEditorScrollCanvas, OrderEditorScrollThumb);
+        AddScrollRailBinding(ArchiveGrid, ArchiveScrollRail, ArchiveScrollColumn, ArchiveScrollCanvas, ArchiveScrollThumb);
+        AddScrollRailBinding(AccountsGrid, AccountsScrollRail, AccountsScrollColumn, AccountsScrollCanvas, AccountsScrollThumb);
+        AddScrollRailBinding(AccountEditorScrollViewer, AccountEditorScrollRail, AccountEditorScrollColumn, AccountEditorScrollCanvas, AccountEditorScrollThumb);
+        AddScrollRailBinding(PresetsGrid, PresetsScrollRail, PresetsScrollColumn, PresetsScrollCanvas, PresetsScrollThumb);
+        AddScrollRailBinding(PresetEditorScrollViewer, PresetEditorScrollRail, PresetEditorScrollColumn, PresetEditorScrollCanvas, PresetEditorScrollThumb);
+        AddScrollRailBinding(SettingsScrollViewer, SettingsScrollRail, SettingsScrollColumn, SettingsScrollCanvas, SettingsScrollThumb);
+    }
+
+    private void AddScrollRailBinding(
+        FrameworkElement target,
+        Border rail,
+        ColumnDefinition column,
+        Canvas canvas,
+        Thumb thumb)
+    {
+        var binding = new ScrollRailBinding(this, target, rail, column, canvas, thumb);
+        _scrollRailBindings.Add(binding);
+        binding.Attach();
+    }
+
+    private void RefreshScrollRailBindings()
+    {
+        foreach (var binding in _scrollRailBindings)
+        {
+            binding.Refresh();
+        }
+    }
+
+    private void RefreshScrollRailThumbs()
+    {
+        foreach (var binding in _scrollRailBindings)
+        {
+            binding.UpdateThumb();
         }
     }
 
@@ -105,6 +174,265 @@ public partial class MainWindow : Window
     private void SelectableGridSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         CommandManager.InvalidateRequerySuggested();
+    }
+
+    private sealed class ScrollRailBinding
+    {
+        private const double RailWidth = 18;
+
+        private readonly MainWindow _owner;
+        private readonly FrameworkElement _target;
+        private readonly Border _rail;
+        private readonly ColumnDefinition _column;
+        private readonly Canvas _canvas;
+        private readonly Thumb _thumb;
+        private ScrollViewer? _scrollViewer;
+        private double _dragStartOffset;
+        private double _dragDeltaY;
+        private bool _isRefreshQueued;
+
+        public ScrollRailBinding(
+            MainWindow owner,
+            FrameworkElement target,
+            Border rail,
+            ColumnDefinition column,
+            Canvas canvas,
+            Thumb thumb)
+        {
+            _owner = owner;
+            _target = target;
+            _rail = rail;
+            _column = column;
+            _canvas = canvas;
+            _thumb = thumb;
+        }
+
+        public void Attach()
+        {
+            HideNativeVerticalScrollBar();
+            _target.Loaded += TargetLoaded;
+            _target.IsVisibleChanged += TargetIsVisibleChanged;
+            _target.SizeChanged += TargetSizeChanged;
+            _canvas.SizeChanged += CanvasSizeChanged;
+            _rail.PreviewMouseLeftButtonDown += RailPreviewMouseLeftButtonDown;
+            _thumb.DragStarted += ThumbDragStarted;
+            _thumb.DragDelta += ThumbDragDelta;
+            _thumb.DragCompleted += ThumbDragCompleted;
+            Refresh();
+        }
+
+        public void Refresh()
+        {
+            if (_target is not ScrollViewer)
+            {
+                _target.ApplyTemplate();
+            }
+
+            var scrollViewer = _target as ScrollViewer ?? FindVisualChildren<ScrollViewer>(_target).FirstOrDefault();
+            if (scrollViewer is null)
+            {
+                SetRailVisible(false);
+                if (_target.IsLoaded && _target.IsVisible)
+                {
+                    QueueRefresh(DispatcherPriority.Loaded);
+                }
+
+                return;
+            }
+
+            if (!ReferenceEquals(_scrollViewer, scrollViewer))
+            {
+                if (_scrollViewer is not null)
+                {
+                    _scrollViewer.ScrollChanged -= ScrollViewerScrollChanged;
+                    _scrollViewer.SizeChanged -= ScrollViewerSizeChanged;
+                }
+
+                _scrollViewer = scrollViewer;
+                _scrollViewer.ScrollChanged += ScrollViewerScrollChanged;
+                _scrollViewer.SizeChanged += ScrollViewerSizeChanged;
+                _scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+            }
+
+            UpdateThumb();
+        }
+
+        public void UpdateThumb()
+        {
+            if (_scrollViewer is null)
+            {
+                SetRailVisible(false);
+                return;
+            }
+
+            var scrollableHeight = _scrollViewer.ScrollableHeight;
+            var shouldShow =
+                _target.IsVisible &&
+                _target.ActualHeight > 0 &&
+                _target.ActualWidth > 0 &&
+                scrollableHeight > 0;
+
+            if (!shouldShow)
+            {
+                SetRailVisible(false);
+                return;
+            }
+
+            var trackLength = _canvas.ActualHeight;
+            if (trackLength <= 0)
+            {
+                SetRailVisible(true);
+                QueueRefresh(DispatcherPriority.Loaded);
+                return;
+            }
+
+            SetRailVisible(true);
+            var thumbLength = ModernScrollBarAssist.GetThumbLength(trackLength, 0, scrollableHeight, _scrollViewer.ViewportHeight);
+            thumbLength = Math.Min(thumbLength, trackLength);
+            _thumb.Height = thumbLength;
+
+            var availableTrackLength = Math.Max(0, trackLength - thumbLength);
+            var thumbTop = availableTrackLength <= 0
+                ? 0
+                : availableTrackLength * Math.Min(_scrollViewer.VerticalOffset, scrollableHeight) / scrollableHeight;
+
+            Canvas.SetTop(_thumb, thumbTop);
+        }
+
+        private void HideNativeVerticalScrollBar()
+        {
+            if (_target is ScrollViewer scrollViewer)
+            {
+                scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+                return;
+            }
+
+            ScrollViewer.SetVerticalScrollBarVisibility(_target, ScrollBarVisibility.Hidden);
+        }
+
+        private void QueueRefresh(DispatcherPriority priority)
+        {
+            if (_isRefreshQueued)
+            {
+                return;
+            }
+
+            _isRefreshQueued = true;
+            _owner.Dispatcher.BeginInvoke(
+                (Action)(() =>
+                {
+                    _isRefreshQueued = false;
+                    Refresh();
+                }),
+                priority);
+        }
+
+        private void SetRailVisible(bool isVisible)
+        {
+            _rail.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+            _column.Width = isVisible ? new GridLength(RailWidth) : new GridLength(0);
+        }
+
+        private void ScrollToOffset(double targetOffset)
+        {
+            if (_scrollViewer is null)
+            {
+                return;
+            }
+
+            var offset = Math.Clamp(targetOffset, 0, _scrollViewer.ScrollableHeight);
+            _scrollViewer.ScrollToVerticalOffset(offset);
+        }
+
+        private void TargetLoaded(object sender, RoutedEventArgs e)
+        {
+            Refresh();
+        }
+
+        private void TargetIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            QueueRefresh(DispatcherPriority.Loaded);
+        }
+
+        private void TargetSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            UpdateThumb();
+        }
+
+        private void CanvasSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            UpdateThumb();
+        }
+
+        private void ScrollViewerScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            UpdateThumb();
+        }
+
+        private void ScrollViewerSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            UpdateThumb();
+        }
+
+        private void RailPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (_scrollViewer is null || _scrollViewer.ScrollableHeight <= 0 || _thumb.IsMouseOver)
+            {
+                return;
+            }
+
+            var trackLength = _canvas.ActualHeight;
+            var thumbLength = _thumb.ActualHeight;
+            var availableTrackLength = trackLength - thumbLength;
+            if (trackLength <= 0 || availableTrackLength <= 0)
+            {
+                return;
+            }
+
+            var pointerY = e.GetPosition(_canvas).Y;
+            var targetOffset = (pointerY - thumbLength / 2) / availableTrackLength * _scrollViewer.ScrollableHeight;
+            ScrollToOffset(targetOffset);
+            e.Handled = true;
+        }
+
+        private void ThumbDragStarted(object sender, DragStartedEventArgs e)
+        {
+            if (_scrollViewer is null || _scrollViewer.ScrollableHeight <= 0)
+            {
+                return;
+            }
+
+            _dragStartOffset = _scrollViewer.VerticalOffset;
+            _dragDeltaY = 0;
+            e.Handled = true;
+        }
+
+        private void ThumbDragDelta(object sender, DragDeltaEventArgs e)
+        {
+            if (_scrollViewer is null || _scrollViewer.ScrollableHeight <= 0)
+            {
+                return;
+            }
+
+            var trackLength = _canvas.ActualHeight;
+            var thumbLength = _thumb.ActualHeight;
+            var availableTrackLength = trackLength - thumbLength;
+            if (availableTrackLength <= 0)
+            {
+                return;
+            }
+
+            _dragDeltaY += e.VerticalChange;
+            var targetOffset = _dragStartOffset + _dragDeltaY / availableTrackLength * _scrollViewer.ScrollableHeight;
+            ScrollToOffset(targetOffset);
+            e.Handled = true;
+        }
+
+        private void ThumbDragCompleted(object sender, DragCompletedEventArgs e)
+        {
+            UpdateThumb();
+            e.Handled = true;
+        }
     }
 
     private void CanToggleHighlightedRowsSelection(object sender, CanExecuteRoutedEventArgs e)
@@ -266,6 +594,25 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject source)
+        where T : DependencyObject
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(source);
+        for (var index = 0; index < childCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(source, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private void ApplyTheme(AppTheme theme)
