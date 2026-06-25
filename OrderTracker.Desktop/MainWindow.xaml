@@ -1886,6 +1886,11 @@
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
                                            Margin="0,0,12,0"/>
+                                <Button Content="{Binding VisibleOrderItemsExpansionToggleLabel}"
+                                        Command="{Binding ToggleVisibleOrderItemsExpansionCommand}"
+                                        ToolTip="{Binding VisibleOrderItemsExpansionToggleToolTip}"
+                                        MinWidth="74"
+                                        Style="{StaticResource BulkActionButtonStyle}"/>
                                 <Button Content="Select"
                                         Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
                                         CommandTarget="{Binding ElementName=OrdersGrid}"

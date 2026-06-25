@@ -159,6 +159,7 @@ public sealed class MainViewModel : ObservableObject
         MarkSelectedOrdersCompletedCommand = new RelayCommand(_ => MarkSelectedOrdersCompleted(), _ => SelectedIncompleteActiveOrderCount > 0);
         ArchiveSelectedCompletedOrdersCommand = new RelayCommand(_ => ArchiveSelectedCompletedOrders(), _ => SelectedCompletedActiveOrderCount > 0);
         DeleteSelectedOrdersCommand = new RelayCommand(_ => DeleteSelectedOrders(includeArchived: false), _ => SelectedActiveOrderCount > 0);
+        ToggleVisibleOrderItemsExpansionCommand = new RelayCommand(_ => ToggleVisibleOrderItemsExpansion(), _ => HasVisibleOrderItems);
         SelectVisibleArchivedOrdersCommand = new RelayCommand(_ => SelectOrders(ArchivedOrdersView, true));
         ClearSelectedArchivedOrdersCommand = new RelayCommand(_ => ClearOrderSelection(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
         RestoreSelectedOrdersCommand = new RelayCommand(_ => RestoreSelectedOrders(), _ => SelectedArchivedOrderCount > 0);
@@ -287,6 +288,8 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand DeleteSelectedOrdersCommand { get; }
 
+    public ICommand ToggleVisibleOrderItemsExpansionCommand { get; }
+
     public ICommand SelectVisibleArchivedOrdersCommand { get; }
 
     public ICommand ClearSelectedArchivedOrdersCommand { get; }
@@ -391,6 +394,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _searchText, value ?? string.Empty))
             {
                 OrdersView.Refresh();
+                RefreshItemExpansionToggleState();
             }
         }
     }
@@ -440,6 +444,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _hideCompleted, value))
             {
                 OrdersView.Refresh();
+                RefreshItemExpansionToggleState();
             }
         }
     }
@@ -472,6 +477,16 @@ public sealed class MainViewModel : ObservableObject
     public int SelectedPresetCount => ItemPresets.Count(preset => preset.IsSelected);
 
     public string ActiveOrderBulkSelectionSummary => FormatSelectedCount(SelectedActiveOrderCount, "active order");
+
+    public bool HasVisibleOrderItems => GetVisibleOrdersWithItems().Any();
+
+    public string VisibleOrderItemsExpansionToggleLabel => ShouldCollapseVisibleOrderItems()
+        ? "Collapse"
+        : "Expand";
+
+    public string VisibleOrderItemsExpansionToggleToolTip => ShouldCollapseVisibleOrderItems()
+        ? "Collapse all visible item details"
+        : "Expand all visible item details";
 
     public string ArchivedOrderBulkSelectionSummary => FormatSelectedCount(SelectedArchivedOrderCount, "archived order");
 
@@ -1401,6 +1416,29 @@ public sealed class MainViewModel : ObservableObject
         }
 
         RefreshBulkSelectionState();
+    }
+
+    private void ToggleVisibleOrderItemsExpansion()
+    {
+        var orders = GetVisibleOrdersWithItems().ToList();
+        if (orders.Count == 0)
+        {
+            LastActionMessage = "No visible order items to expand.";
+            RefreshItemExpansionToggleState();
+            return;
+        }
+
+        var expand = orders.Any(order => !order.IsItemsExpanded);
+        foreach (var order in orders)
+        {
+            order.IsItemsExpanded = expand;
+        }
+
+        var noun = orders.Count == 1 ? "order" : "orders";
+        LastActionMessage = expand
+            ? $"Expanded item details for {orders.Count} visible {noun}."
+            : $"Collapsed item details for {orders.Count} visible {noun}.";
+        RefreshItemExpansionToggleState();
     }
 
     private void ClearOrderSelection(bool includeArchived)
@@ -2437,6 +2475,20 @@ public sealed class MainViewModel : ObservableObject
         return haystack.Contains(searchText, StringComparison.OrdinalIgnoreCase);
     }
 
+    private IEnumerable<Order> GetVisibleOrdersWithItems()
+    {
+        return OrdersView
+            .Cast<object>()
+            .OfType<Order>()
+            .Where(order => order.HasItems);
+    }
+
+    private bool ShouldCollapseVisibleOrderItems()
+    {
+        var visibleOrdersWithItems = GetVisibleOrdersWithItems().ToList();
+        return visibleOrdersWithItems.Count > 0 && visibleOrdersWithItems.All(order => order.IsItemsExpanded);
+    }
+
     private bool FilterPreset(object value)
     {
         if (value is not ItemPreset preset)
@@ -3246,7 +3298,13 @@ public sealed class MainViewModel : ObservableObject
 
     private void OrderPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(Order.IsItemsExpanded) or nameof(Order.IsTrackingExpanded))
+        if (e.PropertyName == nameof(Order.IsItemsExpanded))
+        {
+            RefreshItemExpansionToggleState();
+            return;
+        }
+
+        if (e.PropertyName == nameof(Order.IsTrackingExpanded))
         {
             return;
         }
@@ -3308,6 +3366,15 @@ public sealed class MainViewModel : ObservableObject
     {
         OrdersView.Refresh();
         ArchivedOrdersView.Refresh();
+        RefreshItemExpansionToggleState();
+    }
+
+    private void RefreshItemExpansionToggleState()
+    {
+        OnPropertyChanged(nameof(HasVisibleOrderItems));
+        OnPropertyChanged(nameof(VisibleOrderItemsExpansionToggleLabel));
+        OnPropertyChanged(nameof(VisibleOrderItemsExpansionToggleToolTip));
+        ((RelayCommand)ToggleVisibleOrderItemsExpansionCommand).RaiseCanExecuteChanged();
     }
 
     private void RefreshArchiveState()
