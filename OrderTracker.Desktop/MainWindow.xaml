@@ -1429,14 +1429,26 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="14"/>
-            <Setter Property="Margin" Value="42,3,8,11"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="9,7"/>
+            <Setter Property="Margin" Value="42,2,8,5"/>
         </Style>
 
         <Style x:Key="ExpandedDetailsHeaderTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource MutedTextStyle}">
+            <Setter Property="FontSize" Value="11.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="TextTrimming" Value="None"/>
+        </Style>
+
+        <Style x:Key="ExpandedItemNameTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextWithToolTipStyle}">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontStretch" Value="Normal"/>
+        </Style>
+
+        <Style x:Key="ExpandedItemValueTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextStyle}">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
 
         <Style x:Key="DashboardCardStyle" TargetType="{x:Type Border}">
@@ -2033,7 +2045,7 @@
                                     <Border Style="{StaticResource ExpandedDetailsBorderStyle}"
                                             Visibility="{Binding IsItemsExpanded, Converter={StaticResource BoolToVisibility}}">
                                         <StackPanel>
-                                            <Grid Margin="0,0,0,6">
+                                            <Grid Margin="0,0,0,3">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="70"/>
@@ -2048,17 +2060,17 @@
                                             <ItemsControl ItemsSource="{Binding Items}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <Grid Margin="0,4,0,0">
+                                                        <Grid Margin="0,2,0,0">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
                                                                 <ColumnDefinition Width="70"/>
                                                                 <ColumnDefinition Width="90"/>
                                                                 <ColumnDefinition Width="90"/>
                                                             </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Name}" Style="{StaticResource CellTextWithToolTipStyle}"/>
-                                                            <TextBlock Grid.Column="1" Text="{Binding Quantity}" Style="{StaticResource CellTextStyle}" TextAlignment="Right"/>
-                                                            <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat=C}" Style="{StaticResource CellTextStyle}" TextAlignment="Right"/>
-                                                            <TextBlock Grid.Column="3" Text="{Binding Subtotal, StringFormat=C, Mode=OneWay}" Style="{StaticResource CellTextStyle}" TextAlignment="Right"/>
+                                                            <TextBlock Text="{Binding Name}" Style="{StaticResource ExpandedItemNameTextStyle}"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Quantity}" Style="{StaticResource ExpandedItemValueTextStyle}" TextAlignment="Right"/>
+                                                            <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat=C}" Style="{StaticResource ExpandedItemValueTextStyle}" TextAlignment="Right"/>
+                                                            <TextBlock Grid.Column="3" Text="{Binding Subtotal, StringFormat=C, Mode=OneWay}" Style="{StaticResource ExpandedItemValueTextStyle}" TextAlignment="Right"/>
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -2069,7 +2081,7 @@
                                     <Border Style="{StaticResource ExpandedDetailsBorderStyle}"
                                             Visibility="{Binding IsTrackingExpanded, Converter={StaticResource BoolToVisibility}}">
                                         <StackPanel>
-                                            <Grid Margin="0,0,0,6">
+                                            <Grid Margin="0,0,0,4">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="160"/>
