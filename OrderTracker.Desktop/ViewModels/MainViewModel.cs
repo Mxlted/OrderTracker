@@ -25,6 +25,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly BrowserLauncher _browserLauncher = new();
     private readonly DiscordWebhookService _discordWebhookService = new();
     private readonly NetworkTimeService _networkTimeService = new();
+    private readonly MerchantFaviconService _merchantFaviconService = new();
     private readonly AppData _data;
     private readonly DispatcherTimer _sidebarClockTimer = new();
 
@@ -52,6 +53,8 @@ public sealed class MainViewModel : ObservableObject
     private bool _isBusy;
     private bool _suppressOrderChangeNotifications;
     private bool _suppressPresetChangeNotifications;
+    private int _merchantIconCacheVersion;
+    private bool _isFetchingMerchantFavicons;
     private bool _isConfirmationOpen;
     private bool _confirmationIsDanger;
     private string _confirmationTitle = string.Empty;
@@ -170,6 +173,7 @@ public sealed class MainViewModel : ObservableObject
         AddOrderItemCommand = new RelayCommand(_ => AddFormItem());
         RemoveOrderItemCommand = new RelayCommand(parameter => RemoveFormItem(parameter as OrderItem), parameter => parameter is OrderItem && FormItems.Count > 1);
         SaveSettingsCommand = new RelayCommand(_ => SaveNow("Settings saved."));
+        ClearMerchantIconCacheCommand = new RelayCommand(_ => ClearMerchantIconCache());
         MigrateLegacyOrderItemsCommand = new RelayCommand(_ => MigrateLegacyOrderItems(), _ => LegacyOrderItemMigrationCount > 0);
         SendDiscordStatsCommand = new RelayCommand(async _ => await SendDiscordStatsAsync(), _ => !IsBusy);
         ConfirmDialogCommand = new RelayCommand(_ => ConfirmDialog(), _ => IsConfirmationOpen);
@@ -208,6 +212,8 @@ public sealed class MainViewModel : ObservableObject
         ApplyArchiveSort();
         RefreshDashboard();
         RefreshArchiveState();
+        RefreshMerchantIconCacheState();
+        QueueMerchantFaviconFetch();
         StartSidebarClock();
         _ = SyncSidebarClockAsync();
     }
@@ -309,6 +315,8 @@ public sealed class MainViewModel : ObservableObject
     public ICommand RemoveOrderItemCommand { get; }
 
     public ICommand SaveSettingsCommand { get; }
+
+    public ICommand ClearMerchantIconCacheCommand { get; }
 
     public ICommand MigrateLegacyOrderItemsCommand { get; }
 
@@ -935,6 +943,26 @@ public sealed class MainViewModel : ObservableObject
 
     public string DataFilePath => _dataStore.DataFilePath;
 
+    public int MerchantIconCacheVersion
+    {
+        get => _merchantIconCacheVersion;
+        private set => SetProperty(ref _merchantIconCacheVersion, value);
+    }
+
+    public string MerchantIconCacheStatus
+    {
+        get
+        {
+            var cachedCount = _merchantFaviconService.CachedIconCount;
+            if (_isFetchingMerchantFavicons)
+            {
+                return cachedCount == 0 ? "Fetching merchant icons..." : $"Fetching merchant icons - {cachedCount} cached.";
+            }
+
+            return cachedCount == 0 ? "No merchant icons cached." : $"{cachedCount} merchant icon(s) cached.";
+        }
+    }
+
     public int LegacyOrderItemMigrationCount => Orders.Count(NeedsLegacyItemMigration);
 
     public string LegacyOrderItemMigrationStatus => LegacyOrderItemMigrationCount == 0
@@ -960,6 +988,110 @@ public sealed class MainViewModel : ObservableObject
     public void CaptureBrowserLinkWindowPlacement()
     {
         _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
+    }
+
+    private void ClearMerchantIconCache()
+    {
+        var removed = _merchantFaviconService.ClearCache();
+        RefreshMerchantIconCacheState(refreshIcons: true);
+        LastActionMessage = removed == 0
+            ? "Merchant icon cache is already empty."
+            : $"Cleared {removed.ToString(CultureInfo.CurrentCulture)} merchant icon cache file(s).";
+
+        if (Settings.FetchMerchantFavicons)
+        {
+            QueueMerchantFaviconFetch();
+        }
+    }
+
+    private void QueueMerchantFaviconFetch()
+    {
+        QueueMerchantFaviconFetch(GetMerchantFaviconCandidates());
+    }
+
+    private void QueueMerchantFaviconFetch(MerchantKind merchant)
+    {
+        QueueMerchantFaviconFetch(new[] { merchant });
+    }
+
+    private void QueueMerchantFaviconFetch(IEnumerable<MerchantKind> merchants)
+    {
+        if (!Settings.FetchMerchantFavicons || _isFetchingMerchantFavicons)
+        {
+            return;
+        }
+
+        var candidates = merchants
+            .Where(MerchantFaviconService.CanFetch)
+            .Distinct()
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        _ = FetchMerchantFaviconsAsync(candidates);
+    }
+
+    private async Task FetchMerchantFaviconsAsync(IReadOnlyCollection<MerchantKind> merchants)
+    {
+        if (_isFetchingMerchantFavicons)
+        {
+            return;
+        }
+
+        _isFetchingMerchantFavicons = true;
+        RefreshMerchantIconCacheState();
+
+        try
+        {
+            foreach (var merchant in merchants)
+            {
+                if (!Settings.FetchMerchantFavicons)
+                {
+                    break;
+                }
+
+                var hadCachedIcon = MerchantFaviconService.FindCachedIconPath(merchant) is not null;
+                try
+                {
+                    var hasCachedIcon = await _merchantFaviconService.EnsureIconAsync(merchant);
+                    if (hasCachedIcon && !hadCachedIcon)
+                    {
+                        RefreshMerchantIconCacheState(refreshIcons: true);
+                        RefreshOrderViews();
+                    }
+                }
+                catch
+                {
+                    // Individual merchant icon failures are recorded by the cache service.
+                }
+            }
+        }
+        finally
+        {
+            _isFetchingMerchantFavicons = false;
+            RefreshMerchantIconCacheState();
+        }
+    }
+
+    private IEnumerable<MerchantKind> GetMerchantFaviconCandidates()
+    {
+        return Orders.Select(order => order.Merchant)
+            .Concat(AccountPresets.Select(preset => preset.MerchantHint))
+            .Concat(ItemPresets.Select(preset => preset.MerchantHint))
+            .Append(Settings.DefaultMerchant)
+            .Where(MerchantFaviconService.CanFetch);
+    }
+
+    private void RefreshMerchantIconCacheState(bool refreshIcons = false)
+    {
+        if (refreshIcons)
+        {
+            MerchantIconCacheVersion++;
+        }
+
+        OnPropertyChanged(nameof(MerchantIconCacheStatus));
     }
 
     private void Navigate(string? page)
@@ -3173,6 +3305,15 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        if (sender == Settings && e.PropertyName == nameof(AppSettings.FetchMerchantFavicons))
+        {
+            RefreshMerchantIconCacheState(refreshIcons: !Settings.FetchMerchantFavicons);
+            if (Settings.FetchMerchantFavicons)
+            {
+                QueueMerchantFaviconFetch();
+            }
+        }
+
         PersistIfNeeded();
     }
 
@@ -3222,6 +3363,8 @@ public sealed class MainViewModel : ObservableObject
                 order.PropertyChanged += OrderPropertyChanged;
                 order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
             }
+
+            QueueMerchantFaviconFetch(e.NewItems.OfType<Order>().Select(order => order.Merchant));
         }
 
         RefreshDashboard();
@@ -3348,14 +3491,19 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        if (sender is Order order && e.PropertyName == nameof(Order.Status))
+        if (sender is Order order && e.PropertyName == nameof(Order.Merchant))
         {
-            if (_editingOrderId == order.Id)
+            QueueMerchantFaviconFetch(order.Merchant);
+        }
+
+        if (sender is Order orderWithStatus && e.PropertyName == nameof(Order.Status))
+        {
+            if (_editingOrderId == orderWithStatus.Id)
             {
-                FormStatus = order.Status;
+                FormStatus = orderWithStatus.Status;
             }
 
-            LastActionMessage = $"Order status changed to {order.Status}.";
+            LastActionMessage = $"Order status changed to {orderWithStatus.Status}.";
         }
 
         RefreshDashboard();

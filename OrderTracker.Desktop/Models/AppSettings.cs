@@ -13,6 +13,7 @@ public sealed class AppSettings : ObservableObject
     private BrowserPreference _browserPreference = BrowserPreference.Default;
     private string _customBrowserPath = string.Empty;
     private bool _useAccountBrowserSessions = true;
+    private bool _fetchMerchantFavicons = true;
     private bool _discordEnabled;
     private string _discordWebhookUrl = string.Empty;
     private string _defaultAccountEmail = string.Empty;
@@ -46,6 +47,12 @@ public sealed class AppSettings : ObservableObject
     {
         get => _useAccountBrowserSessions;
         set => SetProperty(ref _useAccountBrowserSessions, value);
+    }
+
+    public bool FetchMerchantFavicons
+    {
+        get => _fetchMerchantFavicons;
+        set => SetProperty(ref _fetchMerchantFavicons, value);
     }
 
     public bool DiscordEnabled

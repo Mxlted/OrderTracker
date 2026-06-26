@@ -50,6 +50,7 @@
         <conv:BoolToGridLengthConverter x:Key="BoolToGridLength"/>
         <conv:StatusBrushConverter x:Key="StatusBrush"/>
         <conv:MerchantBrushConverter x:Key="MerchantBrush"/>
+        <conv:MerchantFaviconConverter x:Key="MerchantFavicon"/>
         <util:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
 
         <Style TargetType="{x:Type TextBlock}">
@@ -2135,14 +2136,51 @@
                                             <Border Width="30"
                                                     Height="30"
                                                     CornerRadius="15"
-                                                    Background="{Binding Merchant, Converter={StaticResource MerchantBrush}}"
+                                                    Background="Transparent"
                                                     Margin="0,0,6,0">
-                                                <TextBlock Text="{Binding MerchantIcon}"
-                                                           Foreground="{DynamicResource ChipTextBrush}"
-                                                           FontWeight="Bold"
-                                                           FontSize="12"
+                                                <Grid>
+                                                    <Border CornerRadius="15"
+                                                            Background="{Binding Merchant, Converter={StaticResource MerchantBrush}}">
+                                                        <Border.Visibility>
+                                                            <MultiBinding Converter="{StaticResource MerchantFavicon}" ConverterParameter="FallbackVisibility">
+                                                                <Binding Path="Merchant"/>
+                                                                <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                            </MultiBinding>
+                                                        </Border.Visibility>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding MerchantIcon}"
+                                                               Foreground="{DynamicResource ChipTextBrush}"
+                                                               FontWeight="Bold"
+                                                               FontSize="12"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock.Visibility>
+                                                            <MultiBinding Converter="{StaticResource MerchantFavicon}" ConverterParameter="FallbackVisibility">
+                                                                <Binding Path="Merchant"/>
+                                                                <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Visibility>
+                                                    </TextBlock>
+                                                    <Image Width="22"
+                                                           Height="22"
+                                                           Stretch="Uniform"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"
                                                            HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"/>
+                                                           VerticalAlignment="Center">
+                                                        <Image.Source>
+                                                            <MultiBinding Converter="{StaticResource MerchantFavicon}">
+                                                                <Binding Path="Merchant"/>
+                                                                <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                            </MultiBinding>
+                                                        </Image.Source>
+                                                        <Image.Visibility>
+                                                            <MultiBinding Converter="{StaticResource MerchantFavicon}" ConverterParameter="IconVisibility">
+                                                                <Binding Path="Merchant"/>
+                                                                <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                            </MultiBinding>
+                                                        </Image.Visibility>
+                                                    </Image>
+                                                </Grid>
                                             </Border>
                                             <TextBlock Grid.Column="1"
                                                        Text="{Binding Merchant}"
@@ -2757,14 +2795,51 @@
                                                 <Border Width="30"
                                                         Height="30"
                                                         CornerRadius="15"
-                                                        Background="{Binding Merchant, Converter={StaticResource MerchantBrush}}"
+                                                        Background="Transparent"
                                                         Margin="0,0,6,0">
-                                                    <TextBlock Text="{Binding MerchantIcon}"
-                                                               Foreground="{DynamicResource ChipTextBrush}"
-                                                               FontWeight="Bold"
-                                                               FontSize="12"
+                                                    <Grid>
+                                                        <Border CornerRadius="15"
+                                                                Background="{Binding Merchant, Converter={StaticResource MerchantBrush}}">
+                                                            <Border.Visibility>
+                                                                <MultiBinding Converter="{StaticResource MerchantFavicon}" ConverterParameter="FallbackVisibility">
+                                                                    <Binding Path="Merchant"/>
+                                                                    <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                                </MultiBinding>
+                                                            </Border.Visibility>
+                                                        </Border>
+                                                        <TextBlock Text="{Binding MerchantIcon}"
+                                                                   Foreground="{DynamicResource ChipTextBrush}"
+                                                                   FontWeight="Bold"
+                                                                   FontSize="12"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center">
+                                                            <TextBlock.Visibility>
+                                                                <MultiBinding Converter="{StaticResource MerchantFavicon}" ConverterParameter="FallbackVisibility">
+                                                                    <Binding Path="Merchant"/>
+                                                                    <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                                </MultiBinding>
+                                                            </TextBlock.Visibility>
+                                                        </TextBlock>
+                                                        <Image Width="22"
+                                                               Height="22"
+                                                               Stretch="Uniform"
+                                                               RenderOptions.BitmapScalingMode="HighQuality"
                                                                HorizontalAlignment="Center"
-                                                               VerticalAlignment="Center"/>
+                                                               VerticalAlignment="Center">
+                                                            <Image.Source>
+                                                                <MultiBinding Converter="{StaticResource MerchantFavicon}">
+                                                                    <Binding Path="Merchant"/>
+                                                                    <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                                </MultiBinding>
+                                                            </Image.Source>
+                                                            <Image.Visibility>
+                                                                <MultiBinding Converter="{StaticResource MerchantFavicon}" ConverterParameter="IconVisibility">
+                                                                    <Binding Path="Merchant"/>
+                                                                    <Binding Path="Data.MerchantIconCacheVersion" Source="{StaticResource VmProxy}"/>
+                                                                </MultiBinding>
+                                                            </Image.Visibility>
+                                                        </Image>
+                                                    </Grid>
                                                 </Border>
                                                 <TextBlock Grid.Column="1"
                                                            Text="{Binding Merchant}"
@@ -3635,6 +3710,40 @@
                                     <CheckBox Content="Amazon account sessions"
                                               IsChecked="{Binding Settings.UseAccountBrowserSessions}"
                                               Margin="0,14,0,0"/>
+                                    <Border Background="{DynamicResource ControlBrush}"
+                                            BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8"
+                                            Margin="0,10,0,0">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <CheckBox Content="Fetch merchant icons"
+                                                      IsChecked="{Binding Settings.FetchMerchantFavicons}"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0"/>
+                                            <Button Grid.Column="1"
+                                                    Content="Clear cache"
+                                                    Command="{Binding ClearMerchantIconCacheCommand}"
+                                                    Padding="8,4"
+                                                    MinHeight="28"
+                                                    FontSize="11.5"
+                                                    Margin="10,0,0,0"/>
+                                            <TextBlock Grid.Row="1"
+                                                       Grid.ColumnSpan="2"
+                                                       Text="{Binding MerchantIconCacheStatus}"
+                                                       Style="{StaticResource MutedTextStyle}"
+                                                       FontSize="11"
+                                                       Margin="2,4,0,0"/>
+                                        </Grid>
+                                    </Border>
                                 </StackPanel>
                             </Border>
 
