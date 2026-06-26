@@ -1781,24 +1781,43 @@ public sealed class MainViewModel : ObservableObject
             : string.Empty;
     }
 
-    private void CopyTrackingNumbers(Order? order)
+    public void CopyTrackingNumbers(Order? order)
     {
         if (order is null)
         {
             return;
         }
 
-        var text = string.Join(Environment.NewLine, order.TrackingNumbers.Select(tracking => tracking.Number).Where(number => !string.IsNullOrWhiteSpace(number)));
+        CopyTrackingNumbers(new[] { order });
+    }
+
+    public void CopyTrackingNumbers(IEnumerable<Order> orders)
+    {
+        var orderList = orders
+            .Where(order => order is not null)
+            .Distinct()
+            .ToList();
+
+        var text = string.Join(
+            Environment.NewLine,
+            orderList.SelectMany(order => order.TrackingNumbers)
+                .Select(tracking => tracking.Number)
+                .Where(number => !string.IsNullOrWhiteSpace(number)));
+
         if (string.IsNullOrWhiteSpace(text))
         {
-            LastActionMessage = "That order has no tracking numbers to copy.";
+            LastActionMessage = orderList.Count == 1
+                ? "That order has no tracking numbers to copy."
+                : "The selected orders have no tracking numbers to copy.";
             return;
         }
 
         try
         {
             Clipboard.SetText(text);
-            LastActionMessage = "Tracking numbers copied to clipboard.";
+            LastActionMessage = orderList.Count == 1
+                ? "Tracking numbers copied to clipboard."
+                : $"Tracking numbers copied from {orderList.Count} orders.";
         }
         catch (Exception ex)
         {

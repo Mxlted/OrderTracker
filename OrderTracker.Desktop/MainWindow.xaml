@@ -1260,8 +1260,8 @@
                                   Command="{Binding Data.OpenOrderLinkCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Copy tracking numbers"
-                                  Command="{Binding Data.CopyTrackingNumbersCommand, Source={StaticResource VmProxy}}"
-                                  CommandParameter="{Binding}"/>
+                                  Command="{x:Static local:MainWindow.CopyHighlightedTrackingNumbersCommand}"
+                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         <MenuItem Header="Toggle completed"
                                   Command="{Binding Data.ToggleCompletedCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -1294,8 +1294,8 @@
                                   Command="{Binding Data.OpenOrderLinkCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Copy tracking numbers"
-                                  Command="{Binding Data.CopyTrackingNumbersCommand, Source={StaticResource VmProxy}}"
-                                  CommandParameter="{Binding}"/>
+                                  Command="{x:Static local:MainWindow.CopyHighlightedTrackingNumbersCommand}"
+                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         <MenuItem Header="Delete"
                                   Command="{Binding Data.DeleteOrderCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -2107,7 +2107,7 @@
                         </DataGrid.RowDetailsTemplate>
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header=""
-                                                    Width="36"
+                                                    Width="Auto"
                                                     MinWidth="34"
                                                     MaxWidth="38">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2729,7 +2729,7 @@
                                   ColumnWidth="*">
                             <DataGrid.Columns>
                                 <DataGridTemplateColumn Header=""
-                                                        Width="36"
+                                                        Width="Auto"
                                                         MinWidth="34"
                                                         MaxWidth="38">
                                     <DataGridTemplateColumn.CellTemplate>
@@ -3035,7 +3035,7 @@
                                       ScrollViewer.CanContentScroll="False"
                                       SelectionChanged="SelectableGridSelectionChanged">
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="" Width="40">
+                                    <DataGridTemplateColumn Header="" Width="Auto" MinWidth="34" MaxWidth="40">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3329,7 +3329,7 @@
                                       ScrollViewer.CanContentScroll="False"
                                       SelectionChanged="SelectableGridSelectionChanged">
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="" Width="40">
+                                    <DataGridTemplateColumn Header="" Width="Auto" MinWidth="34" MaxWidth="40">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
