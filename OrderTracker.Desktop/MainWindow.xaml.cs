@@ -83,6 +83,7 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         StoreWindowPlacement();
+        _viewModel.CaptureBrowserLinkWindowPlacement();
         _viewModel.SaveNow();
         base.OnClosing(e);
     }

@@ -957,6 +957,11 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    public void CaptureBrowserLinkWindowPlacement()
+    {
+        _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
+    }
+
     private void Navigate(string? page)
     {
         if (Enum.TryParse<AppPage>(page, out var parsed))

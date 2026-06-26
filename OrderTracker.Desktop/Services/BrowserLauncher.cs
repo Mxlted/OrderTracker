@@ -18,6 +18,12 @@ public sealed class BrowserLauncher
     private const uint SwpNoMove = 0x0002;
     private const int MinimumRememberedWindowWidth = 320;
     private const int MinimumRememberedWindowHeight = 240;
+    private const int CascadeOffsetX = 32;
+    private const int CascadeOffsetY = 32;
+    private const int SmXVirtualScreen = 76;
+    private const int SmYVirtualScreen = 77;
+    private const int SmCxVirtualScreen = 78;
+    private const int SmCyVirtualScreen = 79;
 
     private readonly Dictionary<string, BrowserWindowReference> _openLinkWindows = new(StringComparer.OrdinalIgnoreCase);
     private IntPtr _lastActiveLinkWindowHandle;
@@ -38,6 +44,11 @@ public sealed class BrowserLauncher
         }
 
         return OpenUrlNormally(uri, settings);
+    }
+
+    public void CaptureTrackedLinkWindowBounds(AppSettings settings)
+    {
+        RememberLastActiveWindowBounds(settings);
     }
 
     private string OpenUrlNormally(Uri uri, AppSettings settings)
@@ -124,7 +135,7 @@ public sealed class BrowserLauncher
             return activationMessage;
         }
 
-        RememberLastActiveWindowSize(settings);
+        RememberLastActiveWindowBounds(settings);
 
         if (!string.IsNullOrWhiteSpace(sessionDirectory))
         {
@@ -138,8 +149,9 @@ public sealed class BrowserLauncher
             UseShellExecute = false
         };
 
-        var rememberedSize = GetRememberedWindowSize(settings);
-        AddBrowserArguments(startInfo, launchKind, uri, sessionDirectory, rememberedSize);
+        var rememberedBounds = GetRememberedWindowBounds(settings);
+        var launchBounds = GetNextLaunchBounds(rememberedBounds);
+        AddBrowserArguments(startInfo, launchKind, uri, sessionDirectory, launchBounds);
 
         var process = Process.Start(startInfo);
         var windowHandle = WaitForLaunchedWindow(process, browserPath, existingWindows, TimeSpan.FromSeconds(3));
@@ -150,9 +162,9 @@ public sealed class BrowserLauncher
 
         if (windowHandle != IntPtr.Zero)
         {
-            ApplyRememberedWindowSize(windowHandle, rememberedSize);
+            ApplyWindowBounds(windowHandle, launchBounds);
             _lastActiveLinkWindowHandle = windowHandle;
-            RememberWindowSize(windowHandle, settings);
+            RememberWindowBounds(windowHandle, settings);
         }
 
         return openedMessage;
@@ -180,7 +192,7 @@ public sealed class BrowserLauncher
 
                 BringWindowToFront(windowHandle);
                 _lastActiveLinkWindowHandle = windowHandle;
-                RememberWindowSize(windowHandle, settings);
+                RememberWindowBounds(windowHandle, settings);
                 message = $"Brought existing {uri.Host} window to the front.";
                 return true;
             }
@@ -210,7 +222,7 @@ public sealed class BrowserLauncher
 
             BringWindowToFront(windowHandle);
             _lastActiveLinkWindowHandle = windowHandle;
-            RememberWindowSize(windowHandle, settings);
+            RememberWindowBounds(windowHandle, settings);
             message = $"Brought existing {uri.Host} window to the front.";
             return true;
         }
@@ -231,17 +243,17 @@ public sealed class BrowserLauncher
         SetForegroundWindow(windowHandle);
     }
 
-    private void RememberLastActiveWindowSize(AppSettings settings)
+    private void RememberLastActiveWindowBounds(AppSettings settings)
     {
         if (_lastActiveLinkWindowHandle != IntPtr.Zero && IsWindow(_lastActiveLinkWindowHandle))
         {
-            RememberWindowSize(_lastActiveLinkWindowHandle, settings);
+            RememberWindowBounds(_lastActiveLinkWindowHandle, settings);
         }
     }
 
-    private static void RememberWindowSize(IntPtr windowHandle, AppSettings settings)
+    private static void RememberWindowBounds(IntPtr windowHandle, AppSettings settings)
     {
-        if (!TryGetWindowSize(windowHandle, out var width, out var height))
+        if (!TryGetWindowBounds(windowHandle, out var left, out var top, out var width, out var height))
         {
             return;
         }
@@ -260,9 +272,82 @@ public sealed class BrowserLauncher
         {
             settings.BrowserLinkWindowHeight = height;
         }
+
+        if (settings.BrowserLinkWindowLeft != left)
+        {
+            settings.BrowserLinkWindowLeft = left;
+        }
+
+        if (settings.BrowserLinkWindowTop != top)
+        {
+            settings.BrowserLinkWindowTop = top;
+        }
     }
 
-    private static BrowserWindowSize? GetRememberedWindowSize(AppSettings settings)
+    private BrowserWindowBounds? GetNextLaunchBounds(BrowserWindowBounds? rememberedBounds)
+    {
+        if (!TryGetTrackedOpenWindowBounds(out var trackedBounds))
+        {
+            return rememberedBounds;
+        }
+
+        return CascadeWindowBounds(trackedBounds);
+    }
+
+    private bool TryGetTrackedOpenWindowBounds(out BrowserWindowBounds bounds)
+    {
+        if (TryGetUsableWindowBounds(_lastActiveLinkWindowHandle, out bounds))
+        {
+            return true;
+        }
+
+        foreach (var pair in _openLinkWindows.ToArray())
+        {
+            if (pair.Value.WindowHandle != IntPtr.Zero)
+            {
+                if (TryGetUsableWindowBounds(pair.Value.WindowHandle, out bounds))
+                {
+                    _lastActiveLinkWindowHandle = pair.Value.WindowHandle;
+                    return true;
+                }
+
+                _openLinkWindows.Remove(pair.Key);
+                continue;
+            }
+
+            if (pair.Value.Process is null)
+            {
+                _openLinkWindows.Remove(pair.Key);
+                continue;
+            }
+
+            try
+            {
+                pair.Value.Process.Refresh();
+                if (!pair.Value.Process.HasExited)
+                {
+                    var windowHandle = WaitForMainWindowHandle(pair.Value.Process, TimeSpan.FromMilliseconds(250));
+                    pair.Value.WindowHandle = windowHandle;
+
+                    if (TryGetUsableWindowBounds(windowHandle, out bounds))
+                    {
+                        _lastActiveLinkWindowHandle = windowHandle;
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                _openLinkWindows.Remove(pair.Key);
+            }
+        }
+
+        _lastActiveLinkWindowHandle = IntPtr.Zero;
+        bounds = default;
+        return false;
+    }
+
+    private static BrowserWindowBounds? GetRememberedWindowBounds(AppSettings settings)
     {
         if (settings.BrowserLinkWindowWidth is not { } widthValue ||
             settings.BrowserLinkWindowHeight is not { } heightValue)
@@ -273,30 +358,96 @@ public sealed class BrowserLauncher
         var width = (int)Math.Round(widthValue);
         var height = (int)Math.Round(heightValue);
 
-        return IsUsableWindowSize(width, height)
-            ? new BrowserWindowSize(width, height)
+        if (!IsUsableWindowSize(width, height))
+        {
+            return null;
+        }
+
+        int? left = settings.BrowserLinkWindowLeft is { } leftValue
+            ? (int)Math.Round(leftValue)
             : null;
+        int? top = settings.BrowserLinkWindowTop is { } topValue
+            ? (int)Math.Round(topValue)
+            : null;
+
+        return new BrowserWindowBounds(left, top, width, height);
     }
 
-    private static void ApplyRememberedWindowSize(IntPtr windowHandle, BrowserWindowSize? windowSize)
+    private static BrowserWindowBounds CascadeWindowBounds(BrowserWindowBounds baseBounds)
     {
-        if (windowSize is null || !IsWindow(windowHandle))
+        var left = (baseBounds.Left ?? 0) + CascadeOffsetX;
+        var top = (baseBounds.Top ?? 0) + CascadeOffsetY;
+        return KeepBoundsOnVirtualScreen(new BrowserWindowBounds(left, top, baseBounds.Width, baseBounds.Height), baseBounds);
+    }
+
+    private static BrowserWindowBounds KeepBoundsOnVirtualScreen(BrowserWindowBounds candidateBounds, BrowserWindowBounds fallbackBounds)
+    {
+        var screenLeft = GetSystemMetrics(SmXVirtualScreen);
+        var screenTop = GetSystemMetrics(SmYVirtualScreen);
+        var screenWidth = GetSystemMetrics(SmCxVirtualScreen);
+        var screenHeight = GetSystemMetrics(SmCyVirtualScreen);
+
+        if (screenWidth <= 0 || screenHeight <= 0 ||
+            candidateBounds.Left is not { } candidateLeft ||
+            candidateBounds.Top is not { } candidateTop)
+        {
+            return candidateBounds;
+        }
+
+        var screenRight = screenLeft + screenWidth;
+        var screenBottom = screenTop + screenHeight;
+        var left = candidateLeft;
+        var top = candidateTop;
+
+        if (left + candidateBounds.Width > screenRight)
+        {
+            left = fallbackBounds.Left ?? screenLeft;
+        }
+
+        if (top + candidateBounds.Height > screenBottom)
+        {
+            top = fallbackBounds.Top ?? screenTop;
+        }
+
+        return new BrowserWindowBounds(left, top, candidateBounds.Width, candidateBounds.Height);
+    }
+
+    private static void ApplyWindowBounds(IntPtr windowHandle, BrowserWindowBounds? windowBounds)
+    {
+        if (windowBounds is null || !IsWindow(windowHandle))
         {
             return;
+        }
+
+        var bounds = windowBounds.Value;
+        var flags = SwpNoZOrder | SwpNoActivate;
+        var left = 0;
+        var top = 0;
+
+        if (bounds.Left is { } rememberedLeft && bounds.Top is { } rememberedTop)
+        {
+            left = rememberedLeft;
+            top = rememberedTop;
+        }
+        else
+        {
+            flags |= SwpNoMove;
         }
 
         SetWindowPos(
             windowHandle,
             IntPtr.Zero,
-            0,
-            0,
-            windowSize.Value.Width,
-            windowSize.Value.Height,
-            SwpNoMove | SwpNoZOrder | SwpNoActivate);
+            left,
+            top,
+            bounds.Width,
+            bounds.Height,
+            flags);
     }
 
-    private static bool TryGetWindowSize(IntPtr windowHandle, out int width, out int height)
+    private static bool TryGetWindowBounds(IntPtr windowHandle, out int left, out int top, out int width, out int height)
     {
+        left = 0;
+        top = 0;
         width = 0;
         height = 0;
 
@@ -305,8 +456,26 @@ public sealed class BrowserLauncher
             return false;
         }
 
+        left = rect.Left;
+        top = rect.Top;
         width = rect.Right - rect.Left;
         height = rect.Bottom - rect.Top;
+        return true;
+    }
+
+    private static bool TryGetUsableWindowBounds(IntPtr windowHandle, out BrowserWindowBounds bounds)
+    {
+        bounds = default;
+
+        if (windowHandle == IntPtr.Zero ||
+            !IsWindow(windowHandle) ||
+            !TryGetWindowBounds(windowHandle, out var left, out var top, out var width, out var height) ||
+            !IsUsableWindowSize(width, height))
+        {
+            return false;
+        }
+
+        bounds = new BrowserWindowBounds(left, top, width, height);
         return true;
     }
 
@@ -359,7 +528,7 @@ public sealed class BrowserLauncher
         BrowserLaunchKind launchKind,
         Uri uri,
         string? sessionDirectory,
-        BrowserWindowSize? rememberedSize)
+        BrowserWindowBounds? rememberedBounds)
     {
         switch (launchKind)
         {
@@ -372,9 +541,14 @@ public sealed class BrowserLauncher
                 startInfo.ArgumentList.Add("--no-first-run");
                 startInfo.ArgumentList.Add("--no-default-browser-check");
                 startInfo.ArgumentList.Add("--disable-session-crashed-bubble");
-                if (rememberedSize is { } chromiumSize)
+                if (rememberedBounds is { } chromiumBounds)
                 {
-                    startInfo.ArgumentList.Add($"--window-size={chromiumSize.Width},{chromiumSize.Height}");
+                    startInfo.ArgumentList.Add($"--window-size={chromiumBounds.Width},{chromiumBounds.Height}");
+                    if (chromiumBounds.Left is { } chromiumLeft &&
+                        chromiumBounds.Top is { } chromiumTop)
+                    {
+                        startInfo.ArgumentList.Add($"--window-position={chromiumLeft},{chromiumTop}");
+                    }
                 }
 
                 startInfo.ArgumentList.Add($"--app={uri.AbsoluteUri}");
@@ -762,6 +936,9 @@ public sealed class BrowserLauncher
     private static extern bool GetWindowRect(IntPtr hWnd, out WindowRect lpRect);
 
     [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -778,7 +955,7 @@ public sealed class BrowserLauncher
         public int Bottom;
     }
 
-    private readonly record struct BrowserWindowSize(int Width, int Height);
+    private readonly record struct BrowserWindowBounds(int? Left, int? Top, int Width, int Height);
 
     private sealed class BrowserWindowReference
     {
