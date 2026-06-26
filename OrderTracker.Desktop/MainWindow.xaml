@@ -2101,6 +2101,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  AutomationProperties.Name="Select order for bulk actions"
                                                   HorizontalAlignment="Center"
                                                   Margin="0"/>
                                     </DataTemplate>
@@ -2183,6 +2184,7 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <ToggleButton IsChecked="{Binding IsItemsExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Toggle item details"
                                                           Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}"
                                                           Style="{StaticResource ExpandToggleButtonStyle}"
                                                           ToolTip="{Binding ItemsToolTip}"
@@ -2237,6 +2239,7 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <ToggleButton IsChecked="{Binding IsTrackingExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Toggle tracking details"
                                                           Visibility="{Binding HasMultipleTrackingNumbers, Converter={StaticResource BoolToVisibility}}"
                                                           Style="{StaticResource ExpandToggleButtonStyle}"
                                                           ToolTip="Show tracking numbers"
@@ -2720,6 +2723,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      AutomationProperties.Name="Select archived order for bulk actions"
                                                       HorizontalAlignment="Center"
                                                       Margin="0"/>
                                         </DataTemplate>
@@ -3023,6 +3027,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Select account preset for bulk actions"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -3035,6 +3040,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Favorite account preset"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -3315,6 +3321,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Select item preset for bulk actions"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -3329,6 +3336,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          AutomationProperties.Name="Favorite item preset"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -3795,9 +3803,11 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="{Binding ConfirmationCancelText}"
                                 Command="{Binding CancelDialogCommand}"
+                                IsCancel="True"
                                 Margin="0,0,8,0"/>
                         <Button Content="{Binding ConfirmationConfirmText}"
                                 Command="{Binding ConfirmDialogCommand}"
+                                IsDefault="True"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 Visibility="{Binding ConfirmationIsDanger, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
                         <Button Content="{Binding ConfirmationConfirmText}"

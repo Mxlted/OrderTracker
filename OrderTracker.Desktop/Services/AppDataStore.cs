@@ -14,7 +14,18 @@ public sealed class AppDataStore
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
-        Converters = { new OrderJsonConverter(), new MerchantKindJsonConverter(), new JsonStringEnumConverter() }
+        Converters =
+        {
+            new OrderJsonConverter(),
+            new MerchantKindJsonConverter(),
+            new SafeEnumJsonConverter<BrowserPreference>(BrowserPreference.Default),
+            new SafeEnumJsonConverter<AppTheme>(AppTheme.Dark),
+            new SafeEnumJsonConverter<OrderGroupOption>(OrderGroupOption.None),
+            new SafeEnumJsonConverter<OrderSortOption>(OrderSortOption.NewestFirst),
+            new SafeEnumJsonConverter<OrderStatus>(OrderStatus.Ordered),
+            new SafeEnumJsonConverter<CarrierKind>(CarrierKind.Unknown),
+            new JsonStringEnumConverter()
+        }
     };
 
     public string DataFilePath { get; }

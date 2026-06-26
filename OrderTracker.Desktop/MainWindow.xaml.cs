@@ -459,17 +459,14 @@ public partial class MainWindow : Window
     private void SetHighlightedRowsSelection(ExecutedRoutedEventArgs e, bool isSelected)
     {
         var grid = GetCommandGrid(e);
-        if (grid is null)
-        {
-            return;
-        }
-
-        var highlightedItems = grid.SelectedItems
-            .Cast<object>()
-            .Where(IsBulkSelectableItem)
-            .ToList();
-
         var fallback = GetCommandItem(e);
+        var highlightedItems = grid is null
+            ? new List<object>()
+            : grid.SelectedItems
+                .Cast<object>()
+                .Where(IsBulkSelectableItem)
+                .ToList();
+
         if (highlightedItems.Count == 0 && fallback is not null && IsBulkSelectableItem(fallback))
         {
             highlightedItems.Add(fallback);

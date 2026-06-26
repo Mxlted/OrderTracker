@@ -12,6 +12,8 @@ namespace OrderTracker.Desktop.Services;
 
 public sealed class DiscordWebhookService
 {
+    private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(15);
+
     private const int DiscordDescriptionLimit = 4096;
     private const int DiscordFieldNameLimit = 256;
     private const int DiscordFieldValueLimit = 1024;
@@ -23,7 +25,10 @@ public sealed class DiscordWebhookService
     private const int EmbedColorWarning = 0xFAA61A;
     private const int EmbedColorCritical = 0xED4245;
 
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = new()
+    {
+        Timeout = SendTimeout
+    };
 
     public async Task<string> SendStatsAsync(IEnumerable<Order> orders, AppSettings settings)
     {
@@ -41,12 +46,14 @@ public sealed class DiscordWebhookService
         var orderList = orders.ToList();
         var today = DateTime.Today;
         var monthStart = new DateTime(today.Year, today.Month, 1);
-        var openOrders = orderList.Where(IsOpenOrder).ToList();
+        var monthEnd = monthStart.AddMonths(1);
+        var openOrders = orderList.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
         var open = openOrders.Count;
         var deliveredThisMonth = orderList.Count(order =>
             order.Status == OrderStatus.Delivered &&
             order.DeliveredDate.HasValue &&
-            order.DeliveredDate.Value.Date >= monthStart);
+            order.DeliveredDate.Value.Date >= monthStart &&
+            order.DeliveredDate.Value.Date < monthEnd);
         var overdue = openOrders.Count(order => IsOverdue(order, today));
         var delayed = openOrders.Count(order => order.Status == OrderStatus.Delayed);
         var openMissingTracking = CountOpenMissingTracking(openOrders);
@@ -99,11 +106,22 @@ public sealed class DiscordWebhookService
             }
         });
 
-        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(webhookUri, content).ConfigureAwait(false);
-        return response.IsSuccessStatusCode
-            ? "Discord stats sent."
-            : $"Discord returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+        try
+        {
+            using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await _httpClient.PostAsync(webhookUri, content).ConfigureAwait(false);
+            return response.IsSuccessStatusCode
+                ? "Discord stats sent."
+                : $"Discord returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+        }
+        catch (TaskCanceledException)
+        {
+            return "Discord send timed out.";
+        }
+        catch (HttpRequestException ex)
+        {
+            return $"Discord send failed: {ex.Message}";
+        }
     }
 
     private static void AddField(List<object> fields, string name, string value, bool inline = false)

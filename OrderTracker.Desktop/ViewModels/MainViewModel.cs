@@ -2646,7 +2646,7 @@ public sealed class MainViewModel : ObservableObject
             });
         }
 
-        var missingTrackingOrders = openOrders.Count(order => order.TrackingNumbers.Count == 0);
+        var missingTrackingOrders = openOrders.Count(order => !order.HasTrackingNumbers);
         if (missingTrackingOrders > 0)
         {
             alerts.Add(new SidebarPanelItem
@@ -2698,9 +2698,13 @@ public sealed class MainViewModel : ObservableObject
         var monthEnd = monthStart.AddMonths(1);
         var yearStart = new DateTime(today.Year, 1, 1);
         var yearEnd = yearStart.AddYears(1);
-        var openOrders = Orders.Count(IsOpenOrder);
-        var openBalance = Orders.Where(IsOpenOrder).Sum(order => order.TotalCost);
-        var deliveredThisMonth = Orders.Count(order => order.Status == OrderStatus.Delivered && order.DeliveredDate >= monthStart);
+        var activeOpenOrders = Orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var openOrders = activeOpenOrders.Count;
+        var openBalance = activeOpenOrders.Sum(order => order.TotalCost);
+        var deliveredThisMonth = Orders.Count(order =>
+            order.Status == OrderStatus.Delivered &&
+            order.DeliveredDate >= monthStart &&
+            order.DeliveredDate < monthEnd);
         var totalSpend = Orders.Sum(order => order.TotalCost);
         var monthOrders = Orders.Where(order => order.OrderDate >= monthStart && order.OrderDate < monthEnd).ToList();
         var yearOrders = Orders.Where(order => order.OrderDate >= yearStart && order.OrderDate < yearEnd).ToList();

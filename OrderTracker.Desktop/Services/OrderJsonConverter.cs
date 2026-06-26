@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OrderTracker.Desktop.Models;
@@ -328,8 +329,7 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         where TEnum : struct, Enum
     {
         if (reader.TokenType == JsonTokenType.String &&
-            Enum.TryParse<TEnum>(reader.GetString(), ignoreCase: true, out var namedValue) &&
-            Enum.IsDefined(typeof(TEnum), namedValue))
+            TryReadEnumString(reader.GetString(), out TEnum namedValue))
         {
             return namedValue;
         }
@@ -347,6 +347,41 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         }
 
         return fallback;
+    }
+
+    private static bool TryReadEnumString<TEnum>(string? text, out TEnum value)
+        where TEnum : struct, Enum
+    {
+        value = default;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (Enum.TryParse<TEnum>(text, ignoreCase: true, out var parsed) &&
+            Enum.IsDefined(typeof(TEnum), parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        var normalizedText = NormalizeEnumName(text);
+        foreach (var name in Enum.GetNames<TEnum>())
+        {
+            if (string.Equals(NormalizeEnumName(name), normalizedText, StringComparison.OrdinalIgnoreCase) &&
+                Enum.TryParse<TEnum>(name, out parsed))
+            {
+                value = parsed;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeEnumName(string value)
+    {
+        return new string(value.Where(char.IsLetterOrDigit).ToArray());
     }
 
     private static MerchantKind ReadMerchantKind(ref Utf8JsonReader reader, MerchantKind fallback)

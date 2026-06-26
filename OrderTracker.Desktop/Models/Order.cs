@@ -533,7 +533,10 @@ public sealed class Order : ObservableObject
 
     private void TrackingEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(TrackingEntry.Number) or nameof(TrackingEntry.Carrier))
+        if (e.PropertyName is nameof(TrackingEntry.Number)
+            or nameof(TrackingEntry.Carrier)
+            or nameof(TrackingEntry.Status)
+            or nameof(TrackingEntry.Link))
         {
             OnTrackingNumbersChanged();
         }
