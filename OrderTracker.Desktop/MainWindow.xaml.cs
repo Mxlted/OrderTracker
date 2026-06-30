@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OrderTracker.Desktop.Models;
@@ -16,6 +18,11 @@ namespace OrderTracker.Desktop;
 
 public partial class MainWindow : Window
 {
+    private const int DwmAttributeUseImmersiveDarkMode = 20;
+    private const int DwmAttributeBorderColor = 34;
+    private const int DwmAttributeCaptionColor = 35;
+    private const int DwmAttributeTextColor = 36;
+
     private readonly MainViewModel _viewModel = new();
     private readonly List<ScrollRailBinding> _scrollRailBindings = new();
     private bool _scrollRailBindingsInitialized;
@@ -95,6 +102,12 @@ public partial class MainWindow : Window
         _viewModel.CaptureBrowserLinkWindowPlacement();
         _viewModel.SaveNow();
         base.OnClosing(e);
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        ApplyNativeTitleBarTheme(_viewModel.Settings.Theme);
     }
 
     private void SettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -678,6 +691,61 @@ public partial class MainWindow : Window
         }
 
         Background = (Brush)Resources["AppBackgroundBrush"];
+        ApplyNativeTitleBarTheme(theme);
+    }
+
+    private void ApplyNativeTitleBarTheme(AppTheme theme)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var isDarkTitleBar = theme != AppTheme.Light ? 1 : 0;
+        _ = DwmSetWindowAttribute(
+            handle,
+            DwmAttributeUseImmersiveDarkMode,
+            ref isDarkTitleBar,
+            Marshal.SizeOf<int>());
+
+        var captionColor = theme switch
+        {
+            AppTheme.Light => ToColorRef("#F3F6FA"),
+            AppTheme.OLED => ToColorRef("#000000"),
+            _ => ToColorRef("#101113")
+        };
+        var textColor = theme switch
+        {
+            AppTheme.Light => ToColorRef("#111827"),
+            AppTheme.OLED => ToColorRef("#F4F4F4"),
+            _ => ToColorRef("#F1F3F5")
+        };
+        var borderColor = theme switch
+        {
+            AppTheme.Light => ToColorRef("#CBD7E3"),
+            AppTheme.OLED => ToColorRef("#303030"),
+            _ => ToColorRef("#343A42")
+        };
+
+        _ = DwmSetWindowAttribute(handle, DwmAttributeCaptionColor, ref captionColor, Marshal.SizeOf<int>());
+        _ = DwmSetWindowAttribute(handle, DwmAttributeTextColor, ref textColor, Marshal.SizeOf<int>());
+        _ = DwmSetWindowAttribute(handle, DwmAttributeBorderColor, ref borderColor, Marshal.SizeOf<int>());
+    }
+
+    private static int ToColorRef(string color)
+    {
+        if (ColorConverter.ConvertFromString(color) is not Color parsed)
+        {
+            return 0;
+        }
+
+        return parsed.R | (parsed.G << 8) | (parsed.B << 16);
     }
 
     private void SetBrushColor(string resourceKey, string color)
@@ -687,6 +755,13 @@ public partial class MainWindow : Window
             Resources[resourceKey] = new SolidColorBrush(parsed);
         }
     }
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int dwAttribute,
+        ref int pvAttribute,
+        int cbAttribute);
 
     private void ApplyWindowPlacement()
     {
