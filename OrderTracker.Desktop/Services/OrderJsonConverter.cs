@@ -90,6 +90,10 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
             {
                 order.ProjectedRoiPercentOverride = ReadNullableDecimal(ref reader, order.ProjectedRoiPercentOverride);
             }
+            else if (Matches(propertyName, nameof(Order.ProjectedProfitOverride)))
+            {
+                order.ProjectedProfitOverride = ReadNullableDecimal(ref reader, order.ProjectedProfitOverride);
+            }
             else if (Matches(propertyName, nameof(Order.OrderDate)))
             {
                 order.OrderDate = ReadDateTime(ref reader, order.OrderDate);
@@ -154,6 +158,11 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         if (order.ProjectedRoiPercentOverride.HasValue)
         {
             writer.WriteNumber(nameof(Order.ProjectedRoiPercentOverride), order.ProjectedRoiPercentOverride.Value);
+        }
+
+        if (order.ProjectedProfitOverride.HasValue)
+        {
+            writer.WriteNumber(nameof(Order.ProjectedProfitOverride), order.ProjectedProfitOverride.Value);
         }
 
         WriteProperty(writer, nameof(Order.OrderDate), order.OrderDate, options);

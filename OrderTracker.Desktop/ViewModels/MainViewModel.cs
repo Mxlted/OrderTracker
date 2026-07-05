@@ -78,6 +78,8 @@ public sealed class MainViewModel : ObservableObject
     private string _formOtherCostInput = string.Empty;
     private decimal? _formProjectedRoiPercentOverride;
     private string _formProjectedRoiPercentInput = string.Empty;
+    private decimal? _formProjectedProfitOverride;
+    private string _formProjectedProfitInput = string.Empty;
     private DateTime? _formOrderDate = DateTime.Today;
     private DateTime? _formExpectedDate;
     private DateTime? _formDeliveredDate;
@@ -118,6 +120,8 @@ public sealed class MainViewModel : ObservableObject
         ArchivedOrdersView.Filter = FilterArchivedOrder;
         AccountPresetsView = CollectionViewSource.GetDefaultView(AccountPresets);
         AccountPresetsView.Filter = FilterAccountPreset;
+        OrderAccountPresetsView = new ListCollectionView(AccountPresets);
+        OrderAccountPresetsView.Filter = FilterOrderAccountPreset;
         PresetsView = CollectionViewSource.GetDefaultView(ItemPresets);
         PresetsView.Filter = FilterPreset;
 
@@ -235,6 +239,8 @@ public sealed class MainViewModel : ObservableObject
     public ICollectionView ArchivedOrdersView { get; }
 
     public ICollectionView AccountPresetsView { get; }
+
+    public ICollectionView OrderAccountPresetsView { get; }
 
     public ICollectionView PresetsView { get; }
 
@@ -587,7 +593,13 @@ public sealed class MainViewModel : ObservableObject
     public MerchantKind FormMerchant
     {
         get => _formMerchant;
-        set => SetProperty(ref _formMerchant, value);
+        set
+        {
+            if (SetProperty(ref _formMerchant, value))
+            {
+                RefreshOrderAccountPresets();
+            }
+        }
     }
 
     public string FormOrderNumber
@@ -665,6 +677,23 @@ public sealed class MainViewModel : ObservableObject
     {
         get => _formProjectedRoiPercentInput;
         set => SetProperty(ref _formProjectedRoiPercentInput, value ?? string.Empty);
+    }
+
+    public decimal? FormProjectedProfitOverride
+    {
+        get => _formProjectedProfitOverride;
+        set
+        {
+            var normalized = value.HasValue ? Math.Max(0m, value.Value) : (decimal?)null;
+            SetProperty(ref _formProjectedProfitOverride, normalized);
+            FormProjectedProfitInput = FormatOptionalMoneyInput(normalized);
+        }
+    }
+
+    public string FormProjectedProfitInput
+    {
+        get => _formProjectedProfitInput;
+        set => SetProperty(ref _formProjectedProfitInput, value ?? string.Empty);
     }
 
     public DateTime? FormOrderDate
@@ -1196,6 +1225,7 @@ public sealed class MainViewModel : ObservableObject
         FormTax = 0m;
         FormOtherCost = 0m;
         FormProjectedRoiPercentOverride = null;
+        FormProjectedProfitOverride = null;
         FormOrderDate = DateTime.Today;
         FormExpectedDate = null;
         FormDeliveredDate = null;
@@ -1239,6 +1269,7 @@ public sealed class MainViewModel : ObservableObject
         FormTax = order.Tax;
         FormOtherCost = order.OtherCost;
         FormProjectedRoiPercentOverride = order.ProjectedRoiPercentOverride;
+        FormProjectedProfitOverride = order.ProjectedProfitOverride;
         FormOrderDate = order.OrderDate;
         FormExpectedDate = order.ExpectedDate;
         FormDeliveredDate = order.DeliveredDate;
@@ -1290,6 +1321,7 @@ public sealed class MainViewModel : ObservableObject
         order.Tax = FormTax;
         order.OtherCost = FormOtherCost;
         order.ProjectedRoiPercentOverride = FormProjectedRoiPercentOverride;
+        order.ProjectedProfitOverride = FormProjectedProfitOverride;
         order.OrderDate = FormOrderDate ?? DateTime.Today;
         order.ExpectedDate = FormExpectedDate;
         order.DeliveredDate = FormDeliveredDate;
@@ -1361,17 +1393,23 @@ public sealed class MainViewModel : ObservableObject
         }
 
         if (!TryParseMoney(FormShippingCostInput, "shipping", out var shipping) ||
-            !TryParseMoney(FormTaxInput, "tax", out var tax) ||
-            !TryParseMoney(FormOtherCostInput, "other cost", out var otherCost) ||
-            !TryParseOptionalPercent(FormProjectedRoiPercentInput, "ROI", out var projectedRoiPercentOverride))
+            !TryParseOptionalMoney(FormProjectedProfitInput, "profit", out var projectedProfitOverride) ||
+            !TryParseMoney(FormOtherCostInput, "other cost", out var otherCost))
+        {
+            return false;
+        }
+
+        decimal? projectedRoiPercentOverride = null;
+        if (!projectedProfitOverride.HasValue &&
+            !TryParseOptionalPercent(FormProjectedRoiPercentInput, "ROI", out projectedRoiPercentOverride))
         {
             return false;
         }
 
         FormShippingCost = shipping;
-        FormTax = tax;
         FormOtherCost = otherCost;
-        FormProjectedRoiPercentOverride = projectedRoiPercentOverride;
+        FormProjectedProfitOverride = projectedProfitOverride;
+        FormProjectedRoiPercentOverride = projectedProfitOverride.HasValue ? null : projectedRoiPercentOverride;
         return true;
     }
 
@@ -1441,6 +1479,7 @@ public sealed class MainViewModel : ObservableObject
             Tax = order.Tax,
             OtherCost = order.OtherCost,
             ProjectedRoiPercentOverride = order.ProjectedRoiPercentOverride,
+            ProjectedProfitOverride = order.ProjectedProfitOverride,
             OrderDate = DateTime.Today,
             ExpectedDate = null,
             DeliveredDate = null,
@@ -1902,6 +1941,26 @@ public sealed class MainViewModel : ObservableObject
         return false;
     }
 
+    private bool TryParseOptionalMoney(string input, string label, out decimal? value)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            value = null;
+            return true;
+        }
+
+        if (decimal.TryParse(input, NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue) ||
+            decimal.TryParse(input, NumberStyles.Currency, CultureInfo.InvariantCulture, out currentValue))
+        {
+            value = Math.Max(0m, currentValue);
+            return true;
+        }
+
+        LastActionMessage = $"Enter a valid {label}.";
+        value = null;
+        return false;
+    }
+
     private bool TryParseOptionalPercent(string input, string label, out decimal? value)
     {
         if (string.IsNullOrWhiteSpace(input))
@@ -1936,6 +1995,13 @@ public sealed class MainViewModel : ObservableObject
     private static string FormatMoneyInput(decimal value)
     {
         return value == 0m ? string.Empty : value.ToString("0.00", CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatOptionalMoneyInput(decimal? value)
+    {
+        return value.HasValue
+            ? Math.Max(0m, value.Value).ToString("0.00", CultureInfo.CurrentCulture)
+            : string.Empty;
     }
 
     private static string FormatPercentInput(decimal? value)
@@ -2121,11 +2187,6 @@ public sealed class MainViewModel : ObservableObject
             FormShippingCost = preset.DefaultShipping;
         }
 
-        if (FormTax == 0m)
-        {
-            FormTax = preset.DefaultTax;
-        }
-
         if (preset.MerchantHint != MerchantKind.Unknown)
         {
             FormMerchant = preset.MerchantHint;
@@ -2226,6 +2287,7 @@ public sealed class MainViewModel : ObservableObject
 
         SelectedAccountPreset = preset;
         AccountPresetsView.Refresh();
+        RefreshOrderAccountPresets();
         SaveNow($"Account preset {(isNew ? "added" : "updated")}.");
         CloseAccountPresetEditor();
     }
@@ -2257,6 +2319,7 @@ public sealed class MainViewModel : ObservableObject
                 }
 
                 AccountPresetsView.Refresh();
+                RefreshOrderAccountPresets();
                 RefreshBulkSelectionState();
                 SaveNow($"Deleted {label}.");
             },
@@ -2283,6 +2346,7 @@ public sealed class MainViewModel : ObservableObject
         AccountPresets.Add(copy);
         SelectedAccountPreset = copy;
         AccountPresetsView.Refresh();
+        RefreshOrderAccountPresets();
         SaveNow("Account preset duplicated.");
         BeginEditAccountPreset(copy);
     }
@@ -2350,6 +2414,7 @@ public sealed class MainViewModel : ObservableObject
                 }
 
                 AccountPresetsView.Refresh();
+                RefreshOrderAccountPresets();
                 RefreshBulkSelectionState();
                 SaveNow($"Deleted {candidates.Count} selected {noun}.");
             },
@@ -2713,6 +2778,26 @@ public sealed class MainViewModel : ObservableObject
         return haystack.Contains(AccountPresetSearchText, StringComparison.OrdinalIgnoreCase);
     }
 
+    private bool FilterOrderAccountPreset(object value)
+    {
+        return value is AccountPreset preset && IsOrderAccountPresetVisible(preset);
+    }
+
+    private bool IsOrderAccountPresetVisible(AccountPreset preset)
+    {
+        return FormMerchant == MerchantKind.Unknown || preset.MerchantHint == FormMerchant;
+    }
+
+    private void RefreshOrderAccountPresets()
+    {
+        OrderAccountPresetsView.Refresh();
+        if (SelectedOrderAccountPreset is not null &&
+            (!AccountPresets.Contains(SelectedOrderAccountPreset) || !IsOrderAccountPresetVisible(SelectedOrderAccountPreset)))
+        {
+            SelectedOrderAccountPreset = null;
+        }
+    }
+
     private void ApplySortAndGroup()
     {
         using (OrdersView.DeferRefresh())
@@ -2761,15 +2846,9 @@ public sealed class MainViewModel : ObservableObject
 
     private void ApplyAccountPresetSort()
     {
-        using (AccountPresetsView.DeferRefresh())
-        {
-            AccountPresetsView.SortDescriptions.Clear();
-
-            foreach (var sort in GetAccountPresetSortDescriptions())
-            {
-                AccountPresetsView.SortDescriptions.Add(sort);
-            }
-        }
+        var sortDescriptions = GetAccountPresetSortDescriptions().ToList();
+        ApplySortDescriptions(AccountPresetsView, sortDescriptions);
+        ApplySortDescriptions(OrderAccountPresetsView, sortDescriptions);
     }
 
     private void ApplyItemPresetSort()
@@ -2781,6 +2860,19 @@ public sealed class MainViewModel : ObservableObject
             foreach (var sort in GetItemPresetSortDescriptions())
             {
                 PresetsView.SortDescriptions.Add(sort);
+            }
+        }
+    }
+
+    private static void ApplySortDescriptions(ICollectionView view, IEnumerable<SortDescription> sortDescriptions)
+    {
+        using (view.DeferRefresh())
+        {
+            view.SortDescriptions.Clear();
+
+            foreach (var sort in sortDescriptions)
+            {
+                view.SortDescriptions.Add(sort);
             }
         }
     }
@@ -3066,25 +3158,20 @@ public sealed class MainViewModel : ObservableObject
             new MetricCard { Label = "Open balance", Value = openBalance.ToString("C", CultureInfo.CurrentCulture), Detail = "Not yet completed", Accent = "#F57FB0" },
             new MetricCard { Label = "Total spend", Value = totalSpend.ToString("C", CultureInfo.CurrentCulture), Detail = "All tracked orders", Accent = "#7CDB7C" },
             new MetricCard { Label = "This month", Value = monthSpend.ToString("C", CultureInfo.CurrentCulture), Detail = "Orders placed this month", Accent = "#FFB547" },
-            new MetricCard { Label = "Projected month ROI", Value = projectedMonthRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(monthEffectiveRoiPercent)} blended merchant rate", Accent = "#2F9E7E" },
-            new MetricCard { Label = "Projected year ROI", Value = projectedYearRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(yearEffectiveRoiPercent)} blended merchant rate", Accent = "#7C9BFF" },
+            new MetricCard { Label = "Projected month ROI", Value = projectedMonthRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(monthEffectiveRoiPercent)} effective ROI rate", Accent = "#2F9E7E" },
+            new MetricCard { Label = "Projected year ROI", Value = projectedYearRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(yearEffectiveRoiPercent)} effective ROI rate", Accent = "#7C9BFF" },
             new MetricCard { Label = "Completed", Value = deliveredThisMonth.ToString(CultureInfo.CurrentCulture), Detail = "Delivered this month", Accent = "#B389FF" }
         };
     }
 
     private decimal CalculateProjectedRoi(IEnumerable<Order> orders)
     {
-        return orders.Sum(order => CalculateProjectedRoi(order.TotalCost, Settings.GetProjectedRoiPercent(order)));
-    }
-
-    private static decimal CalculateProjectedRoi(decimal spend, decimal percent)
-    {
-        return spend * Math.Max(0m, percent) / 100m;
+        return orders.Sum(Settings.GetProjectedRoiAmount);
     }
 
     private static decimal CalculateEffectiveRoiPercent(decimal spend, decimal projectedRoi)
     {
-        return spend <= 0m ? 0m : projectedRoi / spend * 100m;
+        return AppSettings.CalculateEffectiveProjectedRoiPercent(spend, projectedRoi);
     }
 
     private static string FormatPercent(decimal percent)
@@ -3588,6 +3675,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         RefreshBulkSelectionState();
+        RefreshOrderAccountPresets();
     }
 
     private void ItemPresetsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -3633,6 +3721,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         AccountPresetsView.Refresh();
+        RefreshOrderAccountPresets();
         PersistIfNeeded();
     }
 

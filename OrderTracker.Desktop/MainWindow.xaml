@@ -2424,7 +2424,7 @@
                                                   SelectedItem="{Binding SelectedOrderPreset}"/>
 
                                         <TextBlock Text="Account preset" Style="{StaticResource FieldLabelStyle}"/>
-                                        <ComboBox ItemsSource="{Binding AccountPresets}"
+                                        <ComboBox ItemsSource="{Binding OrderAccountPresetsView}"
                                                   DisplayMemberPath="DisplayName"
                                                   SelectedItem="{Binding SelectedOrderAccountPreset}"/>
                                     </StackPanel>
@@ -2547,11 +2547,12 @@
                                                          TextAlignment="Right"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Tax" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding FormTaxInput, UpdateSourceTrigger=PropertyChanged}"
+                                                <TextBlock Text="Profit" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                                <TextBox Text="{Binding FormProjectedProfitInput, UpdateSourceTrigger=PropertyChanged}"
                                                          Style="{StaticResource PlaceholderTextBoxStyle}"
                                                          Tag="0.00"
-                                                         TextAlignment="Right"/>
+                                                         TextAlignment="Right"
+                                                         ToolTip="Overrides ROI percentage when set."/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="2">
                                                 <TextBlock Text="ROI override" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
@@ -2559,7 +2560,7 @@
                                                          Style="{StaticResource PlaceholderTextBoxStyle}"
                                                          Tag="Global"
                                                          TextAlignment="Right"
-                                                         ToolTip="Blank uses merchant ROI."/>
+                                                         ToolTip="Blank uses merchant ROI. Ignored when profit is set."/>
                                             </StackPanel>
                                         </Grid>
                                     </StackPanel>

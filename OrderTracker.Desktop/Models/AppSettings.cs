@@ -166,6 +166,26 @@ public sealed class AppSettings : ObservableObject
         return order.ProjectedRoiPercentOverride ?? GetProjectedRoiPercent(order.Merchant);
     }
 
+    public decimal GetProjectedRoiAmount(Order order)
+    {
+        return order.ProjectedProfitOverride ?? CalculateProjectedRoiAmount(order.TotalCost, GetProjectedRoiPercent(order));
+    }
+
+    public decimal GetEffectiveProjectedRoiPercent(Order order)
+    {
+        return CalculateEffectiveProjectedRoiPercent(order.TotalCost, GetProjectedRoiAmount(order));
+    }
+
+    public static decimal CalculateProjectedRoiAmount(decimal spend, decimal percent)
+    {
+        return spend * Math.Max(0m, percent) / 100m;
+    }
+
+    public static decimal CalculateEffectiveProjectedRoiPercent(decimal spend, decimal projectedRoi)
+    {
+        return spend <= 0m ? 0m : projectedRoi / spend * 100m;
+    }
+
     public static ObservableCollection<MerchantRoiSetting> CreateDefaultMerchantProjectedRoiPercents()
     {
         return new ObservableCollection<MerchantRoiSetting>(

@@ -335,17 +335,12 @@ public sealed class DiscordWebhookService
 
     private static decimal CalculateProjectedRoi(IEnumerable<Order> orders, AppSettings settings)
     {
-        return orders.Sum(order => CalculateProjectedRoi(order.TotalCost, settings.GetProjectedRoiPercent(order)));
-    }
-
-    private static decimal CalculateProjectedRoi(decimal spend, decimal percent)
-    {
-        return spend * Math.Max(0m, percent) / 100m;
+        return orders.Sum(settings.GetProjectedRoiAmount);
     }
 
     private static decimal CalculateEffectiveRoiPercent(decimal spend, decimal projectedRoi)
     {
-        return spend <= 0m ? 0m : projectedRoi / spend * 100m;
+        return AppSettings.CalculateEffectiveProjectedRoiPercent(spend, projectedRoi);
     }
 
     private static int CountOpenMissingTracking(IEnumerable<Order> openOrders)
