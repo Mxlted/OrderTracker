@@ -39,6 +39,8 @@ public sealed class MainViewModel : ObservableObject
     private string _archiveSearchText = string.Empty;
     private OrderGroupOption _selectedGroup = OrderGroupOption.None;
     private OrderSortOption _selectedSort = OrderSortOption.NewestFirst;
+    private AccountSortOption _selectedAccountSort = AccountSortOption.NameAscending;
+    private ItemSortOption _selectedItemSort = ItemSortOption.NameAscending;
     private bool _hideCompleted;
     private string? _editingOrderId;
     private bool _isOrderEditorOpen;
@@ -210,6 +212,8 @@ public sealed class MainViewModel : ObservableObject
         ResetPresetForm();
         ApplySortAndGroup();
         ApplyArchiveSort();
+        ApplyAccountPresetSort();
+        ApplyItemPresetSort();
         RefreshDashboard();
         RefreshArchiveState();
         RefreshMerchantIconCacheState();
@@ -257,6 +261,10 @@ public sealed class MainViewModel : ObservableObject
     public Array GroupOptions => Enum.GetValues<OrderGroupOption>();
 
     public Array SortOptions => Enum.GetValues<OrderSortOption>();
+
+    public Array AccountSortOptions => Enum.GetValues<AccountSortOption>();
+
+    public Array ItemSortOptions => Enum.GetValues<ItemSortOption>();
 
     public Array BrowserOptions => Enum.GetValues<BrowserPreference>();
 
@@ -444,6 +452,30 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    public AccountSortOption SelectedAccountSort
+    {
+        get => _selectedAccountSort;
+        set
+        {
+            if (SetProperty(ref _selectedAccountSort, value))
+            {
+                ApplyAccountPresetSort();
+            }
+        }
+    }
+
+    public ItemSortOption SelectedItemSort
+    {
+        get => _selectedItemSort;
+        set
+        {
+            if (SetProperty(ref _selectedItemSort, value))
+            {
+                ApplyItemPresetSort();
+            }
+        }
+    }
+
     public bool HideCompleted
     {
         get => _hideCompleted;
@@ -500,7 +532,7 @@ public sealed class MainViewModel : ObservableObject
 
     public string AccountPresetBulkSelectionSummary => FormatSelectedCount(SelectedAccountPresetCount, "account");
 
-    public string PresetBulkSelectionSummary => FormatSelectedCount(SelectedPresetCount, "preset");
+    public string PresetBulkSelectionSummary => FormatSelectedCount(SelectedPresetCount, "item");
 
     public bool IsOrderEditorOpen
     {
@@ -709,7 +741,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public string PresetEditorTitle => IsEditingPreset ? "Edit preset" : "New preset";
+    public string PresetEditorTitle => IsEditingPreset ? "Edit item" : "New item";
 
     public bool CanSavePreset => IsPresetEditorOpen && !string.IsNullOrWhiteSpace(PresetName);
 
@@ -2097,7 +2129,7 @@ public sealed class MainViewModel : ObservableObject
 
         RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
         SelectedPage = AppPage.Orders;
-        LastActionMessage = $"Applied preset '{preset.Name}'.";
+        LastActionMessage = $"Applied item '{preset.Name}'.";
         PersistIfNeeded();
     }
 
@@ -2333,7 +2365,7 @@ public sealed class MainViewModel : ObservableObject
         if (IsPresetEditorOpen)
         {
             ClosePresetEditor();
-            LastActionMessage = "Preset panel closed.";
+            LastActionMessage = "Item panel closed.";
             return;
         }
 
@@ -2420,7 +2452,7 @@ public sealed class MainViewModel : ObservableObject
 
         SelectedPreset = preset;
         PresetsView.Refresh();
-        SaveNow($"Preset {(isNew ? "added" : "updated")}.");
+        SaveNow($"Item {(isNew ? "added" : "updated")}.");
         ClosePresetEditor();
     }
 
@@ -2451,7 +2483,7 @@ public sealed class MainViewModel : ObservableObject
         var label = DescribeItemPreset(preset);
 
         ShowConfirmation(
-            "Delete item preset",
+            "Delete item",
             $"Delete {label}? This permanently removes the saved item shortcut.",
             "Delete",
             () =>
@@ -2498,7 +2530,7 @@ public sealed class MainViewModel : ObservableObject
         ItemPresets.Add(copy);
         SelectedPreset = copy;
         PresetsView.Refresh();
-        SaveNow("Preset duplicated.");
+        SaveNow("Item duplicated.");
         BeginEditPreset(copy);
     }
 
@@ -2533,15 +2565,15 @@ public sealed class MainViewModel : ObservableObject
 
         if (candidates.Count == 0)
         {
-            LastActionMessage = "No presets are selected.";
+            LastActionMessage = "No items are selected.";
             RefreshBulkSelectionState();
             return;
         }
 
-        var noun = candidates.Count == 1 ? "preset" : "presets";
+        var noun = candidates.Count == 1 ? "item" : "items";
         ShowConfirmation(
-            "Delete selected presets",
-            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected item presets.{FormatCandidateExamples(candidates, DescribeItemPreset)}",
+            "Delete selected items",
+            $"Delete {candidates.Count} selected {noun}? This permanently removes the selected items.{FormatCandidateExamples(candidates, DescribeItemPreset)}",
             "Delete",
             () =>
             {
@@ -2723,6 +2755,32 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    private void ApplyAccountPresetSort()
+    {
+        using (AccountPresetsView.DeferRefresh())
+        {
+            AccountPresetsView.SortDescriptions.Clear();
+
+            foreach (var sort in GetAccountPresetSortDescriptions())
+            {
+                AccountPresetsView.SortDescriptions.Add(sort);
+            }
+        }
+    }
+
+    private void ApplyItemPresetSort()
+    {
+        using (PresetsView.DeferRefresh())
+        {
+            PresetsView.SortDescriptions.Clear();
+
+            foreach (var sort in GetItemPresetSortDescriptions())
+            {
+                PresetsView.SortDescriptions.Add(sort);
+            }
+        }
+    }
+
     private IEnumerable<SortDescription> GetSortDescriptions()
     {
         return SelectedSort switch
@@ -2736,6 +2794,138 @@ public sealed class MainViewModel : ObservableObject
             OrderSortOption.TotalHighToLow => new[] { new SortDescription(nameof(Order.TotalCost), ListSortDirection.Descending) },
             OrderSortOption.TotalLowToHigh => new[] { new SortDescription(nameof(Order.TotalCost), ListSortDirection.Ascending) },
             _ => new[] { new SortDescription(nameof(Order.OrderDate), ListSortDirection.Descending) }
+        };
+    }
+
+    private IEnumerable<SortDescription> GetAccountPresetSortDescriptions()
+    {
+        return SelectedAccountSort switch
+        {
+            AccountSortOption.NameDescending => new[]
+            {
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Descending),
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.EmailAscending => new[]
+            {
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.EmailDescending => new[]
+            {
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Descending),
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.MerchantAscending => new[]
+            {
+                new SortDescription(nameof(AccountPreset.MerchantHint), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.FavoritesFirst => new[]
+            {
+                new SortDescription(nameof(AccountPreset.IsFavorite), ListSortDirection.Descending),
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.MostUsed => new[]
+            {
+                new SortDescription(nameof(AccountPreset.UsageCount), ListSortDirection.Descending),
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.LeastUsed => new[]
+            {
+                new SortDescription(nameof(AccountPreset.UsageCount), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            _ => new[]
+            {
+                new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
+                new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            }
+        };
+    }
+
+    private IEnumerable<SortDescription> GetItemPresetSortDescriptions()
+    {
+        return SelectedItemSort switch
+        {
+            ItemSortOption.NameDescending => new[]
+            {
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Descending),
+                new SortDescription(nameof(ItemPreset.Category), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.CategoryAscending => new[]
+            {
+                new SortDescription(nameof(ItemPreset.Category), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.MerchantAscending => new[]
+            {
+                new SortDescription(nameof(ItemPreset.MerchantHint), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.FavoritesFirst => new[]
+            {
+                new SortDescription(nameof(ItemPreset.IsFavorite), ListSortDirection.Descending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.MostUsed => new[]
+            {
+                new SortDescription(nameof(ItemPreset.UsageCount), ListSortDirection.Descending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.LeastUsed => new[]
+            {
+                new SortDescription(nameof(ItemPreset.UsageCount), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.PriceLowToHigh => new[]
+            {
+                new SortDescription(nameof(ItemPreset.DefaultUnitPrice), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.PriceHighToLow => new[]
+            {
+                new SortDescription(nameof(ItemPreset.DefaultUnitPrice), ListSortDirection.Descending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.QuantityLowToHigh => new[]
+            {
+                new SortDescription(nameof(ItemPreset.DefaultQuantity), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            ItemSortOption.QuantityHighToLow => new[]
+            {
+                new SortDescription(nameof(ItemPreset.DefaultQuantity), ListSortDirection.Descending),
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            },
+            _ => new[]
+            {
+                new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Category), ListSortDirection.Ascending),
+                new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
+            }
         };
     }
 
@@ -3180,8 +3370,8 @@ public sealed class MainViewModel : ObservableObject
     private static string DescribeItemPreset(ItemPreset preset)
     {
         var label = string.IsNullOrWhiteSpace(preset.Name)
-            ? "this item preset"
-            : $"item preset '{preset.Name.Trim()}'";
+            ? "this item"
+            : $"item '{preset.Name.Trim()}'";
 
         var details = new List<string>();
         if (!string.IsNullOrWhiteSpace(preset.Category))

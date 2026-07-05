@@ -1552,7 +1552,7 @@
                             Style="{StaticResource NavButtonStyle}"
                             Command="{Binding NavigateCommand}"
                             CommandParameter="Accounts"/>
-                    <Button Content="Item presets"
+                    <Button Content="Items"
                             Style="{StaticResource NavButtonStyle}"
                             Command="{Binding NavigateCommand}"
                             CommandParameter="Presets"/>
@@ -1609,7 +1609,7 @@
                                             Command="{Binding ToggleQuickAccountPresetCommand}"
                                             Tag="{Binding IsAccountPresetEditorOpen}"
                                             Style="{StaticResource SidebarQuickActionButtonStyle}"/>
-                                    <Button Content="+ New preset"
+                                    <Button Content="+ New item"
                                             Command="{Binding ToggleQuickPresetCommand}"
                                             Tag="{Binding IsPresetEditorOpen}"
                                             Style="{StaticResource SidebarQuickActionButtonStyle}"/>
@@ -2417,8 +2417,8 @@
 
                                 <Border Style="{StaticResource OrderEditorFirstSectionStyle}">
                                     <StackPanel>
-                                        <TextBlock Text="Presets" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
-                                        <TextBlock Text="Item preset" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                        <TextBlock Text="Quick fill" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
+                                        <TextBlock Text="Item" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
                                         <ComboBox ItemsSource="{Binding ItemPresets}"
                                                   DisplayMemberPath="Name"
                                                   SelectedItem="{Binding SelectedOrderPreset}"/>
@@ -3060,12 +3060,23 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.5*"/>
+                                <ColumnDefinition Width="170"/>
+                            </Grid.ColumnDefinitions>
                             <TextBox Grid.Row="0"
+                                     Grid.Column="0"
                                      Text="{Binding AccountPresetSearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource PlaceholderTextBoxStyle}"
                                      Tag="Search accounts"
-                                     ToolTip="Search accounts"/>
+                                     ToolTip="Search accounts"
+                                     Margin="0,0,10,0"/>
+                            <ComboBox Grid.Row="0"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding AccountSortOptions}"
+                                      SelectedItem="{Binding SelectedAccountSort}"/>
                             <WrapPanel Grid.Row="1"
+                                       Grid.ColumnSpan="2"
                                        Margin="0,10,0,0"
                                        VerticalAlignment="Center">
                                 <TextBlock Text="{Binding AccountPresetBulkSelectionSummary}"
@@ -3319,12 +3330,12 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="Item Presets" Style="{StaticResource PageTitleStyle}"/>
+                        <TextBlock Text="Items" Style="{StaticResource PageTitleStyle}"/>
                         <TextBlock Text="Reusable item templates with default quantities, costs, merchant hints, and notes." Style="{StaticResource MutedTextStyle}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <Button Content="New preset" Command="{Binding NewPresetCommand}" Margin="0,0,8,0"/>
-                        <Button Content="Save preset"
+                        <Button Content="New item" Command="{Binding NewPresetCommand}" Margin="0,0,8,0"/>
+                        <Button Content="Save item"
                                 Command="{Binding SavePresetCommand}"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 Visibility="{Binding IsPresetEditorOpen, Converter={StaticResource BoolToVisibility}}"/>
@@ -3354,12 +3365,23 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.5*"/>
+                                <ColumnDefinition Width="190"/>
+                            </Grid.ColumnDefinitions>
                             <TextBox Grid.Row="0"
+                                     Grid.Column="0"
                                      Text="{Binding PresetSearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource PlaceholderTextBoxStyle}"
-                                     Tag="Search presets"
-                                     ToolTip="Search presets"/>
+                                     Tag="Search items"
+                                     ToolTip="Search items"
+                                     Margin="0,0,10,0"/>
+                            <ComboBox Grid.Row="0"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding ItemSortOptions}"
+                                      SelectedItem="{Binding SelectedItemSort}"/>
                             <WrapPanel Grid.Row="1"
+                                       Grid.ColumnSpan="2"
                                        Margin="0,10,0,0"
                                        VerticalAlignment="Center">
                                 <TextBlock Text="{Binding PresetBulkSelectionSummary}"
@@ -3408,7 +3430,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          AutomationProperties.Name="Select item preset for bulk actions"
+                                                          AutomationProperties.Name="Select item for bulk actions"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -3423,7 +3445,7 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          AutomationProperties.Name="Favorite item preset"
+                                                          AutomationProperties.Name="Favorite item"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -3512,7 +3534,7 @@
 
                                 <Border Style="{StaticResource OrderEditorFirstSectionStyle}">
                                     <StackPanel>
-                                        <TextBlock Text="Preset details" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
+                                        <TextBlock Text="Item details" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>

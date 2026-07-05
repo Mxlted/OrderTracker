@@ -1,6 +1,6 @@
 # Order Tracker
 
-Order Tracker is a lightweight Windows desktop app for keeping online purchases organized from checkout to delivery. It tracks orders, accounts, item presets, costs, shipping links, and spending trends in one focused WPF workspace.
+Order Tracker is a lightweight Windows desktop app for keeping online purchases organized from checkout to delivery. It tracks orders, accounts, reusable items, costs, shipping links, and spending trends in one focused WPF workspace.
 
 ## Highlights
 
@@ -8,8 +8,8 @@ Order Tracker is a lightweight Windows desktop app for keeping online purchases 
 - Spend charts grouped by month, year, and merchant.
 - Full order tracking with account/email, merchant, order number/link, item, quantity, unit price, shipping, tax, other costs, important dates, notes, status, and multiple tracking numbers.
 - Searchable, sortable, and groupable Orders page with quick actions for duplicate, delete, complete, link opening, and copy-all-tracking.
-- Account presets with favorites, merchant hints, notes, usage counts, search, apply, edit, duplicate, and delete.
-- Item presets with defaults for quantity, price, shipping, tax, category, merchant hint, favorites, notes, and usage counts.
+- Account presets with favorites, merchant hints, notes, usage counts, search, sort, apply, edit, duplicate, and delete.
+- Items with defaults for quantity, price, shipping, tax, category, merchant hint, favorites, notes, usage counts, search, sort, apply, edit, duplicate, and delete.
 - Carrier recognition for UPS, FedEx, USPS, and Amazon Logistics tracking formats.
 - Amazon order ID support for opening Amazon order detail pages directly.
 - Theme support for Light, Dark, and OLED modes.

@@ -71,6 +71,33 @@ public enum OrderSortOption
     TotalLowToHigh
 }
 
+public enum AccountSortOption
+{
+    NameAscending,
+    NameDescending,
+    EmailAscending,
+    EmailDescending,
+    MerchantAscending,
+    FavoritesFirst,
+    MostUsed,
+    LeastUsed
+}
+
+public enum ItemSortOption
+{
+    NameAscending,
+    NameDescending,
+    CategoryAscending,
+    MerchantAscending,
+    FavoritesFirst,
+    MostUsed,
+    LeastUsed,
+    PriceLowToHigh,
+    PriceHighToLow,
+    QuantityLowToHigh,
+    QuantityHighToLow
+}
+
 public enum OrderStatus
 {
     Ordered,
