@@ -3709,7 +3709,7 @@
                             <Border Style="{StaticResource SettingsCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="Appearance and browser" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock Text="Theme, launch target, and account-isolated Amazon sessions."
+                                    <TextBlock Text="Theme, launch target, and account-isolated Amazon/Target sessions."
                                                Style="{StaticResource CaptionTextStyle}"
                                                Margin="0,-4,0,10"/>
                                     <Grid>
@@ -3730,7 +3730,7 @@
                                     <TextBox Text="{Binding Settings.CustomBrowserPath, UpdateSourceTrigger=PropertyChanged}"
                                              Style="{StaticResource PlaceholderTextBoxStyle}"
                                              Tag="Optional executable path"/>
-                                    <CheckBox Content="Amazon account sessions"
+                                    <CheckBox Content="Amazon/Target account sessions"
                                               IsChecked="{Binding Settings.UseAccountBrowserSessions}"
                                               Margin="0,14,0,0"/>
                                     <Border Background="{DynamicResource ControlBrush}"

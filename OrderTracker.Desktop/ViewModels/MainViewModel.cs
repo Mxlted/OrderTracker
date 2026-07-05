@@ -1812,20 +1812,22 @@ public sealed class MainViewModel : ObservableObject
     private BrowserSessionContext? BuildBrowserSessionContext(Order order, string url)
     {
         if (!Settings.UseAccountBrowserSessions ||
-            order.Merchant != MerchantKind.Amazon ||
             string.IsNullOrWhiteSpace(order.AccountEmail) ||
-            !IsAmazonUrl(url))
+            !IsAccountSessionUrl(order.Merchant, url))
         {
             return null;
         }
 
         var accountEmail = order.AccountEmail.Trim();
         var preset = AccountPresets.FirstOrDefault(candidate =>
-            string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase));
+            candidate.MerchantHint == order.Merchant &&
+            string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase)) ??
+            AccountPresets.FirstOrDefault(candidate =>
+                string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase));
 
         return new BrowserSessionContext
         {
-            Merchant = MerchantKind.Amazon,
+            Merchant = order.Merchant,
             AccountKey = accountEmail,
             AccountDisplayName = preset?.DisplayName ?? accountEmail
         };
@@ -1834,30 +1836,39 @@ public sealed class MainViewModel : ObservableObject
     private BrowserSessionContext? BuildBrowserSessionContext(AccountPreset preset, MerchantKind merchant, string url)
     {
         if (!Settings.UseAccountBrowserSessions ||
-            merchant != MerchantKind.Amazon ||
             string.IsNullOrWhiteSpace(preset.Email) ||
-            !IsAmazonUrl(url))
+            !IsAccountSessionUrl(merchant, url))
         {
             return null;
         }
 
         return new BrowserSessionContext
         {
-            Merchant = MerchantKind.Amazon,
+            Merchant = merchant,
             AccountKey = preset.Email.Trim(),
             AccountDisplayName = preset.DisplayName
         };
     }
 
-    private static bool IsAmazonUrl(string url)
+    private static bool IsAccountSessionUrl(MerchantKind merchant, string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
             return false;
         }
 
-        return uri.Host.Equals("amazon.com", StringComparison.OrdinalIgnoreCase) ||
-               uri.Host.EndsWith(".amazon.com", StringComparison.OrdinalIgnoreCase);
+        return merchant switch
+        {
+            MerchantKind.Amazon => IsHostOrSubdomain(uri.Host, "amazon.com"),
+            MerchantKind.Target => IsHostOrSubdomain(uri.Host, "target.com"),
+            _ => false
+        };
+    }
+
+    private static bool IsHostOrSubdomain(string host, string domain)
+    {
+        return host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ApplyRecognitionQuietly(Order order)
