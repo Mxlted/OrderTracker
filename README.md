@@ -11,7 +11,7 @@ Order Tracker is a lightweight Windows desktop app for keeping online purchases 
 - Account presets with favorites, merchant hints, notes, usage counts, search, sort, apply, edit, duplicate, and delete.
 - Items with defaults for quantity, price, shipping, tax, category, merchant hint, favorites, notes, usage counts, search, sort, apply, edit, duplicate, and delete.
 - Carrier recognition for UPS, FedEx, USPS, and Amazon Logistics tracking formats.
-- Amazon order ID support for opening Amazon order detail pages directly.
+- Amazon and Target order-link support for opening merchant order pages directly.
 - Theme support for Light, Dark, and OLED modes.
 - Settings for browser preference, autosave, storage location, remembered window placement, optional Discord webhook stats, and Orders-list column visibility.
 

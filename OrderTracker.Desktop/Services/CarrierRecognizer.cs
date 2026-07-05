@@ -8,6 +8,8 @@ namespace OrderTracker.Desktop.Services;
 
 public static partial class CarrierRecognizer
 {
+    private const string TargetOrdersBaseUrl = "https://www.target.com/orders/";
+
     private static readonly Regex AmazonOrderIdPattern = new(@"^\d{3}-\d{7}-\d{7}$", RegexOptions.Compiled);
     private static readonly Regex UpsPattern = new(@"^1Z[0-9A-Z]{16}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex AmazonTrackingPattern = new(@"^TBA[A-Z0-9]{9,}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -112,11 +114,27 @@ public static partial class CarrierRecognizer
         return "https://www.amazon.com/gp/css/order-history";
     }
 
+    private static string BuildTargetOrderUrl(string orderNumber)
+    {
+        var trimmed = orderNumber.Trim();
+        return string.Concat(TargetOrdersBaseUrl, Uri.EscapeDataString(trimmed));
+    }
+
     public static string BuildOrderUrl(Order order)
     {
         if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
         {
             return BuildAmazonOrderUrl(order.OrderNumber);
+        }
+
+        if (!string.IsNullOrWhiteSpace(order.OrderLink))
+        {
+            return order.OrderLink.Trim();
+        }
+
+        if (order.Merchant == MerchantKind.Target && !string.IsNullOrWhiteSpace(order.OrderNumber))
+        {
+            return BuildTargetOrderUrl(order.OrderNumber);
         }
 
         return order.OrderLink.Trim();
@@ -161,6 +179,12 @@ public static partial class CarrierRecognizer
         if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
         {
             order.OrderLink = BuildAmazonOrderUrl(order.OrderNumber);
+        }
+        else if (order.Merchant == MerchantKind.Target &&
+                 string.IsNullOrWhiteSpace(order.OrderLink) &&
+                 !string.IsNullOrWhiteSpace(order.OrderNumber))
+        {
+            order.OrderLink = BuildTargetOrderUrl(order.OrderNumber);
         }
 
         foreach (var tracking in order.TrackingNumbers)
