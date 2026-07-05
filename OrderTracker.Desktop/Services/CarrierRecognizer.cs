@@ -8,7 +8,8 @@ namespace OrderTracker.Desktop.Services;
 
 public static partial class CarrierRecognizer
 {
-    private const string TargetOrdersBaseUrl = "https://www.target.com/orders/";
+    private const string TargetOrderHistoryUrl = "https://www.target.com/orders";
+    private const string TargetOrdersBaseUrl = TargetOrderHistoryUrl + "/";
 
     private static readonly Regex AmazonOrderIdPattern = new(@"^\d{3}-\d{7}-\d{7}$", RegexOptions.Compiled);
     private static readonly Regex UpsPattern = new(@"^1Z[0-9A-Z]{16}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -112,6 +113,11 @@ public static partial class CarrierRecognizer
     public static string BuildAmazonOrderHistoryUrl()
     {
         return "https://www.amazon.com/gp/css/order-history";
+    }
+
+    public static string BuildTargetOrderHistoryUrl()
+    {
+        return TargetOrderHistoryUrl;
     }
 
     private static string BuildTargetOrderUrl(string orderNumber)

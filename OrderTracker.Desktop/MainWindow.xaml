@@ -1350,7 +1350,7 @@
                         <MenuItem Header="Apply to current order"
                                   Command="{Binding Data.ApplyAccountPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
-                        <MenuItem Header="View Amazon orders"
+                        <MenuItem Header="View orders"
                                   Command="{Binding Data.ViewAccountOrdersCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Duplicate"
@@ -3287,7 +3287,7 @@
                                                     Style="{StaticResource OrderEditorFooterButtonStyle}"
                                                     Margin="4,0,0,0"/>
                                         </UniformGrid>
-                                        <Button Content="View Amazon orders"
+                                        <Button Content="View orders"
                                                 Command="{Binding ViewAccountOrdersCommand}"
                                                 CommandParameter="{Binding SelectedAccountPreset}"
                                                 Style="{StaticResource OrderEditorFooterButtonStyle}"/>

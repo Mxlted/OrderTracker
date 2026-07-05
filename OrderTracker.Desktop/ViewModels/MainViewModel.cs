@@ -2085,8 +2085,12 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        var url = CarrierRecognizer.BuildAmazonOrderHistoryUrl();
-        LastActionMessage = _browserLauncher.OpenUrl(url, Settings, BuildBrowserSessionContext(preset, MerchantKind.Amazon, url));
+        var merchant = preset.MerchantHint == MerchantKind.Target ? MerchantKind.Target : MerchantKind.Amazon;
+        var url = merchant == MerchantKind.Target
+            ? CarrierRecognizer.BuildTargetOrderHistoryUrl()
+            : CarrierRecognizer.BuildAmazonOrderHistoryUrl();
+
+        LastActionMessage = _browserLauncher.OpenUrl(url, Settings, BuildBrowserSessionContext(preset, merchant, url));
     }
 
     private void ApplyPreset(ItemPreset? preset)
