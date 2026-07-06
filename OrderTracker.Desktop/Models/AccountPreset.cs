@@ -41,6 +41,7 @@ public sealed class AccountPreset : ObservableObject
             if (SetProperty(ref _email, value ?? string.Empty))
             {
                 OnPropertyChanged(nameof(DisplayName));
+                OnPropertyChanged(nameof(EmailDomainGroup));
             }
         }
     }
@@ -54,13 +55,25 @@ public sealed class AccountPreset : ObservableObject
     public bool IsFavorite
     {
         get => _isFavorite;
-        set => SetProperty(ref _isFavorite, value);
+        set
+        {
+            if (SetProperty(ref _isFavorite, value))
+            {
+                OnPropertyChanged(nameof(FavoriteGroup));
+            }
+        }
     }
 
     public int UsageCount
     {
         get => _usageCount;
-        set => SetProperty(ref _usageCount, Math.Max(0, value));
+        set
+        {
+            if (SetProperty(ref _usageCount, Math.Max(0, value)))
+            {
+                OnPropertyChanged(nameof(UsageGroup));
+            }
+        }
     }
 
     public string Notes
@@ -77,4 +90,28 @@ public sealed class AccountPreset : ObservableObject
     }
 
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Email : Name;
+
+    public string FavoriteGroup => IsFavorite ? "Favorites" : "Not favorites";
+
+    public string UsageGroup => UsageCount switch
+    {
+        <= 0 => "Unused",
+        1 => "Used once",
+        <= 4 => "Used 2-4 times",
+        _ => "Used 5+ times"
+    };
+
+    public string EmailDomainGroup
+    {
+        get
+        {
+            var atIndex = Email.LastIndexOf('@');
+            if (atIndex < 0 || atIndex == Email.Length - 1)
+            {
+                return "No domain";
+            }
+
+            return Email[(atIndex + 1)..].Trim().ToLowerInvariant();
+        }
+    }
 }

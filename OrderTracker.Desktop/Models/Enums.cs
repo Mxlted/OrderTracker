@@ -71,6 +71,15 @@ public enum OrderSortOption
     TotalLowToHigh
 }
 
+public enum AccountGroupOption
+{
+    None,
+    Merchant,
+    Favorite,
+    Usage,
+    EmailDomain
+}
+
 public enum AccountSortOption
 {
     NameAscending,
@@ -81,6 +90,16 @@ public enum AccountSortOption
     FavoritesFirst,
     MostUsed,
     LeastUsed
+}
+
+public enum ItemGroupOption
+{
+    None,
+    Category,
+    Merchant,
+    Favorite,
+    Usage,
+    PriceRange
 }
 
 public enum ItemSortOption

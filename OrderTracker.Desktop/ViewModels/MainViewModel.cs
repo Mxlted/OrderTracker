@@ -39,7 +39,9 @@ public sealed class MainViewModel : ObservableObject
     private string _archiveSearchText = string.Empty;
     private OrderGroupOption _selectedGroup = OrderGroupOption.None;
     private OrderSortOption _selectedSort = OrderSortOption.NewestFirst;
+    private AccountGroupOption _selectedAccountGroup = AccountGroupOption.None;
     private AccountSortOption _selectedAccountSort = AccountSortOption.NameAscending;
+    private ItemGroupOption _selectedItemGroup = ItemGroupOption.None;
     private ItemSortOption _selectedItemSort = ItemSortOption.NameAscending;
     private bool _hideCompleted;
     private string? _editingOrderId;
@@ -216,8 +218,8 @@ public sealed class MainViewModel : ObservableObject
         ResetPresetForm();
         ApplySortAndGroup();
         ApplyArchiveSort();
-        ApplyAccountPresetSort();
-        ApplyItemPresetSort();
+        ApplyAccountPresetSortAndGroup();
+        ApplyItemPresetSortAndGroup();
         RefreshDashboard();
         RefreshArchiveState();
         RefreshMerchantIconCacheState();
@@ -268,7 +270,11 @@ public sealed class MainViewModel : ObservableObject
 
     public Array SortOptions => Enum.GetValues<OrderSortOption>();
 
+    public Array AccountGroupOptions => Enum.GetValues<AccountGroupOption>();
+
     public Array AccountSortOptions => Enum.GetValues<AccountSortOption>();
+
+    public Array ItemGroupOptions => Enum.GetValues<ItemGroupOption>();
 
     public Array ItemSortOptions => Enum.GetValues<ItemSortOption>();
 
@@ -458,6 +464,18 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    public AccountGroupOption SelectedAccountGroup
+    {
+        get => _selectedAccountGroup;
+        set
+        {
+            if (SetProperty(ref _selectedAccountGroup, value))
+            {
+                ApplyAccountPresetSortAndGroup();
+            }
+        }
+    }
+
     public AccountSortOption SelectedAccountSort
     {
         get => _selectedAccountSort;
@@ -465,7 +483,19 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedAccountSort, value))
             {
-                ApplyAccountPresetSort();
+                ApplyAccountPresetSortAndGroup();
+            }
+        }
+    }
+
+    public ItemGroupOption SelectedItemGroup
+    {
+        get => _selectedItemGroup;
+        set
+        {
+            if (SetProperty(ref _selectedItemGroup, value))
+            {
+                ApplyItemPresetSortAndGroup();
             }
         }
     }
@@ -477,7 +507,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedItemSort, value))
             {
-                ApplyItemPresetSort();
+                ApplyItemPresetSortAndGroup();
             }
         }
     }
@@ -2855,31 +2885,40 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void ApplyAccountPresetSort()
+    private void ApplyAccountPresetSortAndGroup()
     {
         var sortDescriptions = GetAccountPresetSortDescriptions().ToList();
-        ApplySortDescriptions(AccountPresetsView, sortDescriptions);
-        ApplySortDescriptions(OrderAccountPresetsView, sortDescriptions);
+        var groupDescriptions = GetAccountPresetGroupDescriptions().ToList();
+
+        ApplyViewSortAndGroup(AccountPresetsView, sortDescriptions, groupDescriptions);
+        ApplyViewSortAndGroup(OrderAccountPresetsView, sortDescriptions);
     }
 
-    private void ApplyItemPresetSort()
+    private void ApplyItemPresetSortAndGroup()
     {
-        using (PresetsView.DeferRefresh())
-        {
-            PresetsView.SortDescriptions.Clear();
+        var sortDescriptions = GetItemPresetSortDescriptions().ToList();
+        var groupDescriptions = GetItemPresetGroupDescriptions().ToList();
 
-            foreach (var sort in GetItemPresetSortDescriptions())
-            {
-                PresetsView.SortDescriptions.Add(sort);
-            }
-        }
+        ApplyViewSortAndGroup(PresetsView, sortDescriptions, groupDescriptions);
     }
 
-    private static void ApplySortDescriptions(ICollectionView view, IEnumerable<SortDescription> sortDescriptions)
+    private static void ApplyViewSortAndGroup(
+        ICollectionView view,
+        IEnumerable<SortDescription> sortDescriptions,
+        IEnumerable<GroupDescription>? groupDescriptions = null)
     {
         using (view.DeferRefresh())
         {
             view.SortDescriptions.Clear();
+            view.GroupDescriptions.Clear();
+
+            if (groupDescriptions is not null)
+            {
+                foreach (var group in groupDescriptions)
+                {
+                    view.GroupDescriptions.Add(group);
+                }
+            }
 
             foreach (var sort in sortDescriptions)
             {
@@ -2963,6 +3002,18 @@ public sealed class MainViewModel : ObservableObject
         };
     }
 
+    private IEnumerable<GroupDescription> GetAccountPresetGroupDescriptions()
+    {
+        return SelectedAccountGroup switch
+        {
+            AccountGroupOption.Merchant => new[] { new PropertyGroupDescription(nameof(AccountPreset.MerchantHint)) },
+            AccountGroupOption.Favorite => new[] { new PropertyGroupDescription(nameof(AccountPreset.FavoriteGroup)) },
+            AccountGroupOption.Usage => new[] { new PropertyGroupDescription(nameof(AccountPreset.UsageGroup)) },
+            AccountGroupOption.EmailDomain => new[] { new PropertyGroupDescription(nameof(AccountPreset.EmailDomainGroup)) },
+            _ => Array.Empty<GroupDescription>()
+        };
+    }
+
     private IEnumerable<SortDescription> GetItemPresetSortDescriptions()
     {
         return SelectedItemSort switch
@@ -3033,6 +3084,19 @@ public sealed class MainViewModel : ObservableObject
                 new SortDescription(nameof(ItemPreset.Category), ListSortDirection.Ascending),
                 new SortDescription(nameof(ItemPreset.Id), ListSortDirection.Ascending)
             }
+        };
+    }
+
+    private IEnumerable<GroupDescription> GetItemPresetGroupDescriptions()
+    {
+        return SelectedItemGroup switch
+        {
+            ItemGroupOption.Category => new[] { new PropertyGroupDescription(nameof(ItemPreset.CategoryGroup)) },
+            ItemGroupOption.Merchant => new[] { new PropertyGroupDescription(nameof(ItemPreset.MerchantHint)) },
+            ItemGroupOption.Favorite => new[] { new PropertyGroupDescription(nameof(ItemPreset.FavoriteGroup)) },
+            ItemGroupOption.Usage => new[] { new PropertyGroupDescription(nameof(ItemPreset.UsageGroup)) },
+            ItemGroupOption.PriceRange => new[] { new PropertyGroupDescription(nameof(ItemPreset.PriceRangeGroup)) },
+            _ => Array.Empty<GroupDescription>()
         };
     }
 
