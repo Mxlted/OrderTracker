@@ -1098,8 +1098,11 @@
             <Setter Property="IsReadOnly" Value="True"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="EnableRowVirtualization" Value="True"/>
+            <Setter Property="EnableColumnVirtualization" Value="True"/>
             <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
             <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingPanel.IsVirtualizingWhenGrouping" Value="True"/>
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
             <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
             <Setter Property="Stylus.IsFlicksEnabled" Value="False"/>

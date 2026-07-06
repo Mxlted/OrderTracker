@@ -17,7 +17,7 @@ using OrderTracker.Desktop.Utilities;
 
 namespace OrderTracker.Desktop.ViewModels;
 
-public sealed class MainViewModel : ObservableObject
+public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly TimeSpan SidebarClockDisplayOffset = TimeSpan.FromSeconds(1);
 
@@ -26,6 +26,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly DiscordWebhookService _discordWebhookService = new();
     private readonly NetworkTimeService _networkTimeService = new();
     private readonly MerchantFaviconService _merchantFaviconService = new();
+    private readonly HashSet<MerchantKind> _pendingMerchantFaviconFetches = new();
     private readonly AppData _data;
     private readonly DispatcherTimer _sidebarClockTimer = new();
 
@@ -57,6 +58,8 @@ public sealed class MainViewModel : ObservableObject
     private bool _isBusy;
     private bool _suppressOrderChangeNotifications;
     private bool _suppressPresetChangeNotifications;
+    private bool _suppressBulkSelectionNotifications;
+    private bool _isDisposed;
     private int _merchantIconCacheVersion;
     private bool _isFetchingMerchantFavicons;
     private bool _isConfirmationOpen;
@@ -1081,6 +1084,20 @@ public sealed class MainViewModel : ObservableObject
         _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
     }
 
+    public int SetBulkSelection(IEnumerable<object> items, bool isSelected)
+    {
+        var changed = 0;
+        RunWithBulkSelectionNotificationsSuppressed(() =>
+        {
+            foreach (var item in items)
+            {
+                changed += SetBulkSelected(item, isSelected) ? 1 : 0;
+            }
+        });
+
+        return changed;
+    }
+
     private void ClearMerchantIconCache()
     {
         var removed = _merchantFaviconService.ClearCache();
@@ -1092,6 +1109,24 @@ public sealed class MainViewModel : ObservableObject
         if (Settings.FetchMerchantFavicons)
         {
             QueueMerchantFaviconFetch();
+        }
+    }
+
+    private static bool SetBulkSelected(object item, bool isSelected)
+    {
+        switch (item)
+        {
+            case Order order when order.IsSelected != isSelected:
+                order.IsSelected = isSelected;
+                return true;
+            case AccountPreset accountPreset when accountPreset.IsSelected != isSelected:
+                accountPreset.IsSelected = isSelected;
+                return true;
+            case ItemPreset itemPreset when itemPreset.IsSelected != isSelected:
+                itemPreset.IsSelected = isSelected;
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -1107,7 +1142,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void QueueMerchantFaviconFetch(IEnumerable<MerchantKind> merchants)
     {
-        if (!Settings.FetchMerchantFavicons || _isFetchingMerchantFavicons)
+        if (!Settings.FetchMerchantFavicons)
         {
             return;
         }
@@ -1121,10 +1156,18 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        _ = FetchMerchantFaviconsAsync(candidates);
+        foreach (var merchant in candidates)
+        {
+            _pendingMerchantFaviconFetches.Add(merchant);
+        }
+
+        if (!_isFetchingMerchantFavicons)
+        {
+            _ = FetchPendingMerchantFaviconsAsync();
+        }
     }
 
-    private async Task FetchMerchantFaviconsAsync(IReadOnlyCollection<MerchantKind> merchants)
+    private async Task FetchPendingMerchantFaviconsAsync()
     {
         if (_isFetchingMerchantFavicons)
         {
@@ -1136,26 +1179,33 @@ public sealed class MainViewModel : ObservableObject
 
         try
         {
-            foreach (var merchant in merchants)
+            while (Settings.FetchMerchantFavicons && _pendingMerchantFaviconFetches.Count > 0)
             {
-                if (!Settings.FetchMerchantFavicons)
-                {
-                    break;
-                }
+                var merchants = _pendingMerchantFaviconFetches.ToList();
+                _pendingMerchantFaviconFetches.Clear();
 
-                var hadCachedIcon = MerchantFaviconService.FindCachedIconPath(merchant) is not null;
-                try
+                foreach (var merchant in merchants)
                 {
-                    var hasCachedIcon = await _merchantFaviconService.EnsureIconAsync(merchant);
-                    if (hasCachedIcon && !hadCachedIcon)
+                    if (!Settings.FetchMerchantFavicons)
                     {
-                        RefreshMerchantIconCacheState(refreshIcons: true);
-                        RefreshOrderViews();
+                        _pendingMerchantFaviconFetches.Clear();
+                        break;
                     }
-                }
-                catch
-                {
-                    // Individual merchant icon failures are recorded by the cache service.
+
+                    var hadCachedIcon = MerchantFaviconService.FindCachedIconPath(merchant) is not null;
+                    try
+                    {
+                        var hasCachedIcon = await _merchantFaviconService.EnsureIconAsync(merchant);
+                        if (hasCachedIcon && !hadCachedIcon)
+                        {
+                            RefreshMerchantIconCacheState(refreshIcons: true);
+                            RefreshOrderViews();
+                        }
+                    }
+                    catch
+                    {
+                        // Individual merchant icon failures are recorded by the cache service.
+                    }
                 }
             }
         }
@@ -1328,12 +1378,11 @@ public sealed class MainViewModel : ObservableObject
         {
             UpdateOrderFromForm(order, items);
             CarrierRecognizer.ApplyRecognition(order);
+            if (isNew)
+            {
+                Orders.Add(order);
+            }
         });
-
-        if (isNew)
-        {
-            Orders.Add(order);
-        }
 
         SelectedOrder = order;
         RefreshAfterOrderChange($"Order {(isNew ? "added" : "updated")}.");
@@ -1458,7 +1507,7 @@ public sealed class MainViewModel : ObservableObject
             "Delete",
             () =>
             {
-                RemoveOrder(order);
+                RunWithOrderChangeNotificationsSuppressed(() => RemoveOrder(order));
                 RefreshAfterOrderChange($"Deleted {label}.");
             },
             isDanger: true,
@@ -1519,7 +1568,7 @@ public sealed class MainViewModel : ObservableObject
                 : $"Duplicated from {order.OrderNumber.Trim()}."
         };
 
-        Orders.Add(copy);
+        RunWithOrderChangeNotificationsSuppressed(() => Orders.Add(copy));
         BeginEditOrder(copy);
         RefreshAfterOrderChange("Duplicated order. Add the new order number and tracking when ready.");
     }
@@ -1645,15 +1694,16 @@ public sealed class MainViewModel : ObservableObject
 
     private void SelectOrders(System.Collections.IEnumerable orders, bool selected)
     {
-        foreach (var value in orders)
+        RunWithBulkSelectionNotificationsSuppressed(() =>
         {
-            if (value is Order order)
+            foreach (var value in orders)
             {
-                order.IsSelected = selected;
+                if (value is Order order)
+                {
+                    order.IsSelected = selected;
+                }
             }
-        }
-
-        RefreshBulkSelectionState();
+        });
     }
 
     private void ToggleVisibleOrderItemsExpansion()
@@ -1681,12 +1731,13 @@ public sealed class MainViewModel : ObservableObject
 
     private void ClearOrderSelection(bool includeArchived)
     {
-        foreach (var order in Orders.Where(order => order.IsArchived == includeArchived && order.IsSelected))
+        RunWithBulkSelectionNotificationsSuppressed(() =>
         {
-            order.IsSelected = false;
-        }
-
-        RefreshBulkSelectionState();
+            foreach (var order in Orders.Where(order => order.IsArchived == includeArchived && order.IsSelected))
+            {
+                order.IsSelected = false;
+            }
+        });
     }
 
     private void MarkSelectedOrdersCompleted()
@@ -1795,10 +1846,13 @@ public sealed class MainViewModel : ObservableObject
             "Delete",
             () =>
             {
-                foreach (var order in candidates)
+                RunWithOrderChangeNotificationsSuppressed(() =>
                 {
-                    RemoveOrder(order);
-                }
+                    foreach (var order in candidates)
+                    {
+                        RemoveOrder(order);
+                    }
+                });
 
                 RefreshAfterOrderChange($"Deleted {candidates.Count} selected {noun}.");
             },
@@ -1931,6 +1985,25 @@ public sealed class MainViewModel : ObservableObject
         finally
         {
             _suppressPresetChangeNotifications = previousSuppression;
+        }
+    }
+
+    private void RunWithBulkSelectionNotificationsSuppressed(Action action)
+    {
+        var previousSuppression = _suppressBulkSelectionNotifications;
+        _suppressBulkSelectionNotifications = true;
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _suppressBulkSelectionNotifications = previousSuppression;
+        }
+
+        if (!previousSuppression)
+        {
+            RefreshBulkSelectionState();
         }
     }
 
@@ -2180,6 +2253,13 @@ public sealed class MainViewModel : ObservableObject
         }
 
         RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
+        if (SelectedAccountSort is AccountSortOption.MostUsed or AccountSortOption.LeastUsed ||
+            SelectedAccountGroup == AccountGroupOption.Usage)
+        {
+            AccountPresetsView.Refresh();
+            RefreshOrderAccountPresets();
+        }
+
         SelectedPage = AppPage.Orders;
         LastActionMessage = $"Applied account '{preset.DisplayName}'.";
         PersistIfNeeded();
@@ -2234,6 +2314,12 @@ public sealed class MainViewModel : ObservableObject
         }
 
         RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
+        if (SelectedItemSort is ItemSortOption.MostUsed or ItemSortOption.LeastUsed ||
+            SelectedItemGroup == ItemGroupOption.Usage)
+        {
+            PresetsView.Refresh();
+        }
+
         SelectedPage = AppPage.Orders;
         LastActionMessage = $"Applied item '{preset.Name}'.";
         PersistIfNeeded();
@@ -2319,12 +2405,11 @@ public sealed class MainViewModel : ObservableObject
             preset.MerchantHint = AccountPresetMerchantHint;
             preset.IsFavorite = AccountPresetIsFavorite;
             preset.Notes = AccountPresetNotes.Trim();
+            if (isNew)
+            {
+                AccountPresets.Add(preset);
+            }
         });
-
-        if (isNew)
-        {
-            AccountPresets.Add(preset);
-        }
 
         SelectedAccountPreset = preset;
         AccountPresetsView.Refresh();
@@ -2348,7 +2433,7 @@ public sealed class MainViewModel : ObservableObject
             "Delete",
             () =>
             {
-                AccountPresets.Remove(preset);
+                RunWithPresetChangeNotificationsSuppressed(() => AccountPresets.Remove(preset));
                 if (SelectedAccountPreset == preset)
                 {
                     SelectedAccountPreset = null;
@@ -2384,7 +2469,7 @@ public sealed class MainViewModel : ObservableObject
             Notes = preset.Notes
         };
 
-        AccountPresets.Add(copy);
+        RunWithPresetChangeNotificationsSuppressed(() => AccountPresets.Add(copy));
         SelectedAccountPreset = copy;
         AccountPresetsView.Refresh();
         RefreshOrderAccountPresets();
@@ -2394,25 +2479,27 @@ public sealed class MainViewModel : ObservableObject
 
     private void SelectAccountPresets(System.Collections.IEnumerable presets, bool selected)
     {
-        foreach (var value in presets)
+        RunWithBulkSelectionNotificationsSuppressed(() =>
         {
-            if (value is AccountPreset preset)
+            foreach (var value in presets)
             {
-                preset.IsSelected = selected;
+                if (value is AccountPreset preset)
+                {
+                    preset.IsSelected = selected;
+                }
             }
-        }
-
-        RefreshBulkSelectionState();
+        });
     }
 
     private void ClearAccountPresetSelection()
     {
-        foreach (var preset in AccountPresets.Where(preset => preset.IsSelected))
+        RunWithBulkSelectionNotificationsSuppressed(() =>
         {
-            preset.IsSelected = false;
-        }
-
-        RefreshBulkSelectionState();
+            foreach (var preset in AccountPresets.Where(preset => preset.IsSelected))
+            {
+                preset.IsSelected = false;
+            }
+        });
     }
 
     private void DeleteSelectedAccountPresets()
@@ -2435,10 +2522,13 @@ public sealed class MainViewModel : ObservableObject
             "Delete",
             () =>
             {
-                foreach (var preset in candidates)
+                RunWithPresetChangeNotificationsSuppressed(() =>
                 {
-                    AccountPresets.Remove(preset);
-                }
+                    foreach (var preset in candidates)
+                    {
+                        AccountPresets.Remove(preset);
+                    }
+                });
 
                 if (SelectedAccountPreset is not null && candidates.Contains(SelectedAccountPreset) ||
                     _editingAccountPresetId is not null && candidates.Any(preset => preset.Id == _editingAccountPresetId))
@@ -2553,12 +2643,11 @@ public sealed class MainViewModel : ObservableObject
             preset.DefaultTax = PresetDefaultTax;
             preset.IsFavorite = PresetIsFavorite;
             preset.Notes = PresetNotes.Trim();
+            if (isNew)
+            {
+                ItemPresets.Add(preset);
+            }
         });
-
-        if (isNew)
-        {
-            ItemPresets.Add(preset);
-        }
 
         SelectedPreset = preset;
         PresetsView.Refresh();
@@ -2598,7 +2687,7 @@ public sealed class MainViewModel : ObservableObject
             "Delete",
             () =>
             {
-                ItemPresets.Remove(preset);
+                RunWithPresetChangeNotificationsSuppressed(() => ItemPresets.Remove(preset));
                 if (SelectedPreset == preset)
                 {
                     SelectedPreset = null;
@@ -2637,7 +2726,7 @@ public sealed class MainViewModel : ObservableObject
             Notes = preset.Notes
         };
 
-        ItemPresets.Add(copy);
+        RunWithPresetChangeNotificationsSuppressed(() => ItemPresets.Add(copy));
         SelectedPreset = copy;
         PresetsView.Refresh();
         SaveNow("Item duplicated.");
@@ -2646,25 +2735,27 @@ public sealed class MainViewModel : ObservableObject
 
     private void SelectItemPresets(System.Collections.IEnumerable presets, bool selected)
     {
-        foreach (var value in presets)
+        RunWithBulkSelectionNotificationsSuppressed(() =>
         {
-            if (value is ItemPreset preset)
+            foreach (var value in presets)
             {
-                preset.IsSelected = selected;
+                if (value is ItemPreset preset)
+                {
+                    preset.IsSelected = selected;
+                }
             }
-        }
-
-        RefreshBulkSelectionState();
+        });
     }
 
     private void ClearItemPresetSelection()
     {
-        foreach (var preset in ItemPresets.Where(preset => preset.IsSelected))
+        RunWithBulkSelectionNotificationsSuppressed(() =>
         {
-            preset.IsSelected = false;
-        }
-
-        RefreshBulkSelectionState();
+            foreach (var preset in ItemPresets.Where(preset => preset.IsSelected))
+            {
+                preset.IsSelected = false;
+            }
+        });
     }
 
     private void DeleteSelectedPresets()
@@ -2687,10 +2778,13 @@ public sealed class MainViewModel : ObservableObject
             "Delete",
             () =>
             {
-                foreach (var preset in candidates)
+                RunWithPresetChangeNotificationsSuppressed(() =>
                 {
-                    ItemPresets.Remove(preset);
-                }
+                    foreach (var preset in candidates)
+                    {
+                        ItemPresets.Remove(preset);
+                    }
+                });
 
                 if (SelectedPreset is not null && candidates.Contains(SelectedPreset) ||
                     _editingPresetId is not null && candidates.Any(preset => preset.Id == _editingPresetId))
@@ -2721,9 +2815,9 @@ public sealed class MainViewModel : ObservableObject
         {
             LastActionMessage = await _discordWebhookService.SendStatsAsync(Orders, Settings);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            LastActionMessage = $"Discord send failed: {ex.Message}";
+            LastActionMessage = "Discord send failed. Check the webhook URL or network connection.";
         }
         finally
         {
@@ -3102,28 +3196,35 @@ public sealed class MainViewModel : ObservableObject
 
     private void RefreshDashboard()
     {
+        var orders = Orders.ToList();
+
         MetricCards.Clear();
-        foreach (var card in BuildMetricCards())
+        foreach (var card in BuildMetricCards(orders))
         {
             MetricCards.Add(card);
         }
 
-        ReplaceChart(MonthlySpend, BuildMonthlySpend());
-        ReplaceChart(YearlySpend, BuildYearlySpend());
-        ReplaceChart(MerchantSpend, BuildMerchantSpend());
-        ReplaceChart(StatusBreakdown, BuildStatusBreakdown());
-        RefreshSidebarAlerts();
+        ReplaceChart(MonthlySpend, BuildMonthlySpend(orders));
+        ReplaceChart(YearlySpend, BuildYearlySpend(orders));
+        ReplaceChart(MerchantSpend, BuildMerchantSpend(orders));
+        ReplaceChart(StatusBreakdown, BuildStatusBreakdown(orders));
+        RefreshSidebarAlerts(orders);
     }
 
     private void RefreshSidebarAlerts()
     {
-        ReplaceSidebarItems(SidebarAlerts, BuildSidebarAlerts());
+        RefreshSidebarAlerts(Orders.ToList());
     }
 
-    private IEnumerable<SidebarPanelItem> BuildSidebarAlerts()
+    private void RefreshSidebarAlerts(IReadOnlyCollection<Order> orders)
+    {
+        ReplaceSidebarItems(SidebarAlerts, BuildSidebarAlerts(orders));
+    }
+
+    private IEnumerable<SidebarPanelItem> BuildSidebarAlerts(IReadOnlyCollection<Order> orders)
     {
         var today = DateTime.Today;
-        var openOrders = Orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var openOrders = orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
         var alerts = new List<SidebarPanelItem>();
 
         var overdueOrders = openOrders.Count(order => order.ExpectedDate?.Date < today);
@@ -3148,12 +3249,13 @@ public sealed class MainViewModel : ObservableObject
             });
         }
 
-        if (CompletedOrdersReadyToArchiveCount > 0)
+        var completedOrdersReadyToArchive = orders.Count(order => order.Status == OrderStatus.Delivered && !order.IsArchived);
+        if (completedOrdersReadyToArchive > 0)
         {
             alerts.Add(new SidebarPanelItem
             {
                 Label = "Ready to archive",
-                Detail = $"{FormatSimpleCount(CompletedOrdersReadyToArchiveCount, "order")} can move off Orders.",
+                Detail = $"{FormatSimpleCount(completedOrdersReadyToArchive, "order")} can move off Orders.",
                 Accent = "#2F9E7E"
             });
         }
@@ -3169,7 +3271,11 @@ public sealed class MainViewModel : ObservableObject
             });
         }
 
-        var selectedCount = SelectedActiveOrderCount + SelectedArchivedOrderCount + SelectedAccountPresetCount + SelectedPresetCount;
+        var selectedCount =
+            orders.Count(order => order.IsSelected && !order.IsArchived) +
+            orders.Count(order => order.IsSelected && order.IsArchived) +
+            SelectedAccountPresetCount +
+            SelectedPresetCount;
         if (selectedCount > 0)
         {
             alerts.Add(new SidebarPanelItem
@@ -3180,12 +3286,13 @@ public sealed class MainViewModel : ObservableObject
             });
         }
 
-        if (LegacyOrderItemMigrationCount > 0)
+        var legacyOrderItemMigrationCount = orders.Count(NeedsLegacyItemMigration);
+        if (legacyOrderItemMigrationCount > 0)
         {
             alerts.Add(new SidebarPanelItem
             {
                 Label = "Config update",
-                Detail = $"{FormatSimpleCount(LegacyOrderItemMigrationCount, "order")} awaiting item migration.",
+                Detail = $"{FormatSimpleCount(legacyOrderItemMigrationCount, "order")} awaiting item migration.",
                 Accent = "#F57FB0"
             });
         }
@@ -3203,23 +3310,23 @@ public sealed class MainViewModel : ObservableObject
             : alerts.Take(5);
     }
 
-    private IEnumerable<MetricCard> BuildMetricCards()
+    private IEnumerable<MetricCard> BuildMetricCards(IReadOnlyCollection<Order> orders)
     {
         var today = DateTime.Today;
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
         var yearStart = new DateTime(today.Year, 1, 1);
         var yearEnd = yearStart.AddYears(1);
-        var activeOpenOrders = Orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var activeOpenOrders = orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
         var openOrders = activeOpenOrders.Count;
         var openBalance = activeOpenOrders.Sum(order => order.TotalCost);
-        var deliveredThisMonth = Orders.Count(order =>
+        var deliveredThisMonth = orders.Count(order =>
             order.Status == OrderStatus.Delivered &&
             order.DeliveredDate >= monthStart &&
             order.DeliveredDate < monthEnd);
-        var totalSpend = Orders.Sum(order => order.TotalCost);
-        var monthOrders = Orders.Where(order => order.OrderDate >= monthStart && order.OrderDate < monthEnd).ToList();
-        var yearOrders = Orders.Where(order => order.OrderDate >= yearStart && order.OrderDate < yearEnd).ToList();
+        var totalSpend = orders.Sum(order => order.TotalCost);
+        var monthOrders = orders.Where(order => order.OrderDate >= monthStart && order.OrderDate < monthEnd).ToList();
+        var yearOrders = orders.Where(order => order.OrderDate >= yearStart && order.OrderDate < yearEnd).ToList();
         var monthSpend = monthOrders.Sum(order => order.TotalCost);
         var yearSpend = yearOrders.Sum(order => order.TotalCost);
         var projectedMonthRoi = CalculateProjectedRoi(monthOrders);
@@ -3259,7 +3366,7 @@ public sealed class MainViewModel : ObservableObject
         return order.Status is not OrderStatus.Delivered and not OrderStatus.Cancelled and not OrderStatus.Returned;
     }
 
-    private IEnumerable<ChartPoint> BuildMonthlySpend()
+    private IEnumerable<ChartPoint> BuildMonthlySpend(IReadOnlyCollection<Order> orders)
     {
         var start = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-11);
         var accents = new[] { "#5CC8FF", "#7C9BFF", "#B389FF", "#2F9E7E", "#FFB547", "#E05D5D" };
@@ -3268,7 +3375,7 @@ public sealed class MainViewModel : ObservableObject
             .Select(point =>
             {
                 var next = point.Month.AddMonths(1);
-                var value = Orders.Where(order => order.OrderDate >= point.Month && order.OrderDate < next).Sum(order => order.TotalCost);
+                var value = orders.Where(order => order.OrderDate >= point.Month && order.OrderDate < next).Sum(order => order.TotalCost);
                 return new ChartPoint
                 {
                     Label = point.Month.ToString("MMM yy", CultureInfo.CurrentCulture),
@@ -3283,9 +3390,9 @@ public sealed class MainViewModel : ObservableObject
         return points;
     }
 
-    private IEnumerable<ChartPoint> BuildYearlySpend()
+    private IEnumerable<ChartPoint> BuildYearlySpend(IReadOnlyCollection<Order> orders)
     {
-        var points = Orders
+        var points = orders
             .GroupBy(order => order.OrderDate.Year)
             .OrderBy(group => group.Key)
             .Select(group =>
@@ -3306,9 +3413,9 @@ public sealed class MainViewModel : ObservableObject
         return points;
     }
 
-    private IEnumerable<ChartPoint> BuildMerchantSpend()
+    private IEnumerable<ChartPoint> BuildMerchantSpend(IReadOnlyCollection<Order> orders)
     {
-        var points = Orders
+        var points = orders
             .GroupBy(order => order.Merchant)
             .OrderByDescending(group => group.Sum(order => order.TotalCost))
             .Take(8)
@@ -3330,13 +3437,13 @@ public sealed class MainViewModel : ObservableObject
         return points;
     }
 
-    private IEnumerable<ChartPoint> BuildStatusBreakdown()
+    private IEnumerable<ChartPoint> BuildStatusBreakdown(IReadOnlyCollection<Order> orders)
     {
-        var totalOrders = Orders.Count;
+        var totalOrders = orders.Count;
         var points = Enum.GetValues<OrderStatus>()
             .Select(status =>
             {
-                var count = Orders.Count(order => order.Status == status);
+                var count = orders.Count(order => order.Status == status);
                 return new ChartPoint
                 {
                     Label = FormatStatusLabel(status),
@@ -3429,14 +3536,19 @@ public sealed class MainViewModel : ObservableObject
     {
         UpdateSidebarClock();
         _sidebarClockTimer.Interval = TimeSpan.FromSeconds(1);
-        _sidebarClockTimer.Tick += (_, _) => UpdateSidebarClock();
+        _sidebarClockTimer.Tick += SidebarClockTimerTick;
         _sidebarClockTimer.Start();
+    }
+
+    private void SidebarClockTimerTick(object? sender, EventArgs e)
+    {
+        UpdateSidebarClock();
     }
 
     private async Task SyncSidebarClockAsync()
     {
         var networkUtcTime = await _networkTimeService.TryGetUtcTimeAsync();
-        if (networkUtcTime is null)
+        if (networkUtcTime is null || _isDisposed)
         {
             return;
         }
@@ -3448,6 +3560,11 @@ public sealed class MainViewModel : ObservableObject
 
     private void UpdateSidebarClock()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         var previousDate = _sidebarDateTime.Date;
         _sidebarDateTime = GetSidebarDateTime();
         OnPropertyChanged(nameof(SidebarDate));
@@ -3668,6 +3785,10 @@ public sealed class MainViewModel : ObservableObject
             {
                 QueueMerchantFaviconFetch();
             }
+            else
+            {
+                _pendingMerchantFaviconFetches.Clear();
+            }
         }
 
         PersistIfNeeded();
@@ -3723,6 +3844,11 @@ public sealed class MainViewModel : ObservableObject
             QueueMerchantFaviconFetch(e.NewItems.OfType<Order>().Select(order => order.Merchant));
         }
 
+        if (_suppressOrderChangeNotifications)
+        {
+            return;
+        }
+
         RefreshDashboard();
         RefreshOrderViews();
         RefreshLegacyOrderItemMigrationState();
@@ -3749,6 +3875,11 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
+        if (_suppressPresetChangeNotifications)
+        {
+            return;
+        }
+
         RefreshBulkSelectionState();
         RefreshOrderAccountPresets();
     }
@@ -3771,6 +3902,11 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
+        if (_suppressPresetChangeNotifications)
+        {
+            return;
+        }
+
         RefreshBulkSelectionState();
     }
 
@@ -3778,7 +3914,11 @@ public sealed class MainViewModel : ObservableObject
     {
         if (e.PropertyName == nameof(AccountPreset.IsSelected))
         {
-            RefreshBulkSelectionState();
+            if (!_suppressBulkSelectionNotifications && !_suppressPresetChangeNotifications)
+            {
+                RefreshBulkSelectionState();
+            }
+
             return;
         }
 
@@ -3804,7 +3944,11 @@ public sealed class MainViewModel : ObservableObject
     {
         if (e.PropertyName == nameof(ItemPreset.IsSelected))
         {
-            RefreshBulkSelectionState();
+            if (!_suppressBulkSelectionNotifications && !_suppressPresetChangeNotifications)
+            {
+                RefreshBulkSelectionState();
+            }
+
             return;
         }
 
@@ -3840,7 +3984,11 @@ public sealed class MainViewModel : ObservableObject
 
         if (e.PropertyName == nameof(Order.IsSelected))
         {
-            RefreshBulkSelectionState();
+            if (!_suppressBulkSelectionNotifications && !_suppressOrderChangeNotifications)
+            {
+                RefreshBulkSelectionState();
+            }
+
             return;
         }
 
@@ -3995,6 +4143,50 @@ public sealed class MainViewModel : ObservableObject
         if (Settings.AutoSave)
         {
             SaveNow();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _sidebarClockTimer.Stop();
+        _sidebarClockTimer.Tick -= SidebarClockTimerTick;
+        FormItems.CollectionChanged -= FormItemsCollectionChanged;
+        foreach (var item in FormItems)
+        {
+            item.PropertyChanged -= FormItemPropertyChanged;
+        }
+
+        Orders.CollectionChanged -= OrdersCollectionChanged;
+        foreach (var order in Orders)
+        {
+            order.PropertyChanged -= OrderPropertyChanged;
+            order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
+        }
+
+        AccountPresets.CollectionChanged -= AccountPresetsCollectionChanged;
+        foreach (var preset in AccountPresets)
+        {
+            preset.PropertyChanged -= AccountPresetPropertyChanged;
+        }
+
+        ItemPresets.CollectionChanged -= ItemPresetsCollectionChanged;
+        foreach (var preset in ItemPresets)
+        {
+            preset.PropertyChanged -= ItemPresetPropertyChanged;
+        }
+
+        Settings.PropertyChanged -= SettingsPropertyChanged;
+        Settings.Columns.PropertyChanged -= SettingsPropertyChanged;
+        Settings.MerchantProjectedRoiPercents.CollectionChanged -= MerchantProjectedRoiPercentsCollectionChanged;
+        foreach (var setting in Settings.MerchantProjectedRoiPercents)
+        {
+            setting.PropertyChanged -= MerchantProjectedRoiSettingPropertyChanged;
         }
     }
 }

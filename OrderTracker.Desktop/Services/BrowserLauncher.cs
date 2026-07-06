@@ -186,7 +186,7 @@ public sealed class BrowserLauncher
             {
                 if (!IsWindow(windowHandle))
                 {
-                    _openLinkWindows.Remove(windowKey);
+                    RemoveTrackedWindow(windowKey);
                     return false;
                 }
 
@@ -199,7 +199,7 @@ public sealed class BrowserLauncher
 
             if (reference.Process is null)
             {
-                _openLinkWindows.Remove(windowKey);
+                RemoveTrackedWindow(windowKey);
                 return false;
             }
 
@@ -207,7 +207,7 @@ public sealed class BrowserLauncher
 
             if (reference.Process.HasExited)
             {
-                _openLinkWindows.Remove(windowKey);
+                RemoveTrackedWindow(windowKey);
                 return false;
             }
 
@@ -216,7 +216,7 @@ public sealed class BrowserLauncher
 
             if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
             {
-                _openLinkWindows.Remove(windowKey);
+                RemoveTrackedWindow(windowKey);
                 return false;
             }
 
@@ -228,8 +228,21 @@ public sealed class BrowserLauncher
         }
         catch
         {
-            _openLinkWindows.Remove(windowKey);
+            RemoveTrackedWindow(windowKey);
             return false;
+        }
+    }
+
+    private void RemoveTrackedWindow(string windowKey)
+    {
+        if (_openLinkWindows.Remove(windowKey, out var reference))
+        {
+            if (reference.WindowHandle == _lastActiveLinkWindowHandle)
+            {
+                _lastActiveLinkWindowHandle = IntPtr.Zero;
+            }
+
+            reference.Dispose();
         }
     }
 
@@ -311,13 +324,13 @@ public sealed class BrowserLauncher
                     return true;
                 }
 
-                _openLinkWindows.Remove(pair.Key);
+                RemoveTrackedWindow(pair.Key);
                 continue;
             }
 
             if (pair.Value.Process is null)
             {
-                _openLinkWindows.Remove(pair.Key);
+                RemoveTrackedWindow(pair.Key);
                 continue;
             }
 
@@ -338,7 +351,7 @@ public sealed class BrowserLauncher
             }
             catch
             {
-                _openLinkWindows.Remove(pair.Key);
+                RemoveTrackedWindow(pair.Key);
             }
         }
 
@@ -398,6 +411,16 @@ public sealed class BrowserLauncher
         var screenBottom = screenTop + screenHeight;
         var left = candidateLeft;
         var top = candidateTop;
+
+        if (left < screenLeft)
+        {
+            left = screenLeft;
+        }
+
+        if (top < screenTop)
+        {
+            top = screenTop;
+        }
 
         if (left + candidateBounds.Width > screenRight)
         {
@@ -957,7 +980,7 @@ public sealed class BrowserLauncher
 
     private readonly record struct BrowserWindowBounds(int? Left, int? Top, int Width, int Height);
 
-    private sealed class BrowserWindowReference
+    private sealed class BrowserWindowReference : IDisposable
     {
         public BrowserWindowReference(Process? process, IntPtr windowHandle)
         {
@@ -968,6 +991,11 @@ public sealed class BrowserLauncher
         public Process? Process { get; }
 
         public IntPtr WindowHandle { get; set; }
+
+        public void Dispose()
+        {
+            Process?.Dispose();
+        }
     }
 
     private enum BrowserLaunchKind

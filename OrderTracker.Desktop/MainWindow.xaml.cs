@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel = new();
     private readonly List<ScrollRailBinding> _scrollRailBindings = new();
     private bool _scrollRailBindingsInitialized;
+    private bool _isCommandRequeryQueued;
 
     public static readonly RoutedUICommand SelectHighlightedRowsCommand = new(
         "Select",
@@ -102,6 +103,21 @@ public partial class MainWindow : Window
         _viewModel.CaptureBrowserLinkWindowPlacement();
         _viewModel.SaveNow();
         base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _viewModel.Settings.PropertyChanged -= SettingsPropertyChanged;
+        Loaded -= MainWindowLoaded;
+        SizeChanged -= MainWindowSizeChanged;
+        foreach (var binding in _scrollRailBindings)
+        {
+            binding.Detach();
+        }
+
+        _scrollRailBindings.Clear();
+        _viewModel.Dispose();
+        base.OnClosed(e);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -196,7 +212,24 @@ public partial class MainWindow : Window
 
     private void SelectableGridSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        CommandManager.InvalidateRequerySuggested();
+        QueueCommandRequery();
+    }
+
+    private void QueueCommandRequery()
+    {
+        if (_isCommandRequeryQueued)
+        {
+            return;
+        }
+
+        _isCommandRequeryQueued = true;
+        Dispatcher.BeginInvoke(
+            (Action)(() =>
+            {
+                _isCommandRequeryQueued = false;
+                CommandManager.InvalidateRequerySuggested();
+            }),
+            DispatcherPriority.Background);
     }
 
     private sealed class ScrollRailBinding
@@ -213,6 +246,7 @@ public partial class MainWindow : Window
         private double _dragStartOffset;
         private double _dragDeltaY;
         private bool _isRefreshQueued;
+        private bool _isDetached;
 
         public ScrollRailBinding(
             MainWindow owner,
@@ -232,6 +266,7 @@ public partial class MainWindow : Window
 
         public void Attach()
         {
+            _isDetached = false;
             HideNativeVerticalScrollBar();
             _target.Loaded += TargetLoaded;
             _target.IsVisibleChanged += TargetIsVisibleChanged;
@@ -244,8 +279,33 @@ public partial class MainWindow : Window
             Refresh();
         }
 
+        public void Detach()
+        {
+            _isDetached = true;
+            _target.Loaded -= TargetLoaded;
+            _target.IsVisibleChanged -= TargetIsVisibleChanged;
+            _target.SizeChanged -= TargetSizeChanged;
+            _canvas.SizeChanged -= CanvasSizeChanged;
+            _rail.PreviewMouseLeftButtonDown -= RailPreviewMouseLeftButtonDown;
+            _thumb.DragStarted -= ThumbDragStarted;
+            _thumb.DragDelta -= ThumbDragDelta;
+            _thumb.DragCompleted -= ThumbDragCompleted;
+
+            if (_scrollViewer is not null)
+            {
+                _scrollViewer.ScrollChanged -= ScrollViewerScrollChanged;
+                _scrollViewer.SizeChanged -= ScrollViewerSizeChanged;
+                _scrollViewer = null;
+            }
+        }
+
         public void Refresh()
         {
+            if (_isDetached)
+            {
+                return;
+            }
+
             if (_target is not ScrollViewer)
             {
                 _target.ApplyTemplate();
@@ -345,6 +405,11 @@ public partial class MainWindow : Window
                 (Action)(() =>
                 {
                     _isRefreshQueued = false;
+                    if (_isDetached)
+                    {
+                        return;
+                    }
+
                     Refresh();
                 }),
                 priority);
@@ -523,10 +588,7 @@ public partial class MainWindow : Window
         }
 
         var changed = 0;
-        foreach (var item in highlightedItems)
-        {
-            changed += SetBulkSelected(item, isSelected) ? 1 : 0;
-        }
+        changed = _viewModel.SetBulkSelection(highlightedItems, isSelected);
 
         var rowWord = highlightedItems.Count == 1 ? "row" : "rows";
         if (changed == 0)
@@ -583,24 +645,6 @@ public partial class MainWindow : Window
     private static bool IsBulkSelectableItem(object item)
     {
         return item is Order or AccountPreset or ItemPreset;
-    }
-
-    private static bool SetBulkSelected(object item, bool isSelected)
-    {
-        switch (item)
-        {
-            case Order order when order.IsSelected != isSelected:
-                order.IsSelected = isSelected;
-                return true;
-            case AccountPreset accountPreset when accountPreset.IsSelected != isSelected:
-                accountPreset.IsSelected = isSelected;
-                return true;
-            case ItemPreset itemPreset when itemPreset.IsSelected != isSelected:
-                itemPreset.IsSelected = isSelected;
-                return true;
-            default:
-                return false;
-        }
     }
 
     private static DataGrid? GetCommandGrid(RoutedEventArgs e)

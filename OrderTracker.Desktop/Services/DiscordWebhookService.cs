@@ -118,9 +118,9 @@ public sealed class DiscordWebhookService
         {
             return "Discord send timed out.";
         }
-        catch (HttpRequestException ex)
+        catch (HttpRequestException)
         {
-            return $"Discord send failed: {ex.Message}";
+            return "Discord send failed. Check the webhook URL or network connection.";
         }
     }
 
