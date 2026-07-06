@@ -119,6 +119,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _data = _dataStore.Load();
         _selectedGroup = Settings.OrderGroup;
+        _selectedAccountGroup = Settings.AccountGroup;
+        _selectedItemGroup = Settings.ItemGroup;
         OrdersView = new ListCollectionView(Orders);
         OrdersView.Filter = FilterOrder;
         ArchivedOrdersView = new ListCollectionView(Orders);
@@ -474,6 +476,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedAccountGroup, value))
             {
+                Settings.AccountGroup = value;
                 ApplyAccountPresetSortAndGroup();
             }
         }
@@ -498,6 +501,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedItemGroup, value))
             {
+                Settings.ItemGroup = value;
                 ApplyItemPresetSortAndGroup();
             }
         }

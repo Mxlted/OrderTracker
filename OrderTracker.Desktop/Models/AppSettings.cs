@@ -21,6 +21,8 @@ public sealed class AppSettings : ObservableObject
     private bool _autoSave = true;
     private AppTheme _theme = AppTheme.Dark;
     private OrderGroupOption _orderGroup = OrderGroupOption.None;
+    private AccountGroupOption _accountGroup = AccountGroupOption.None;
+    private ItemGroupOption _itemGroup = ItemGroupOption.None;
     private double _windowWidth;
     private double _windowHeight;
     private double? _windowLeft;
@@ -95,6 +97,18 @@ public sealed class AppSettings : ObservableObject
     {
         get => _orderGroup;
         set => SetProperty(ref _orderGroup, value);
+    }
+
+    public AccountGroupOption AccountGroup
+    {
+        get => _accountGroup;
+        set => SetProperty(ref _accountGroup, value);
+    }
+
+    public ItemGroupOption ItemGroup
+    {
+        get => _itemGroup;
+        set => SetProperty(ref _itemGroup, value);
     }
 
     public double WindowWidth
