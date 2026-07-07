@@ -3442,12 +3442,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private decimal CalculateAverageMonthlyProjectedRoi(IReadOnlyCollection<Order> orders)
     {
         var start = GetMonthlyChartStart();
-        var end = start.AddMonths(12);
-        var projectedRoi = orders
-            .Where(order => order.OrderDate >= start && order.OrderDate < end)
-            .Sum(Settings.GetProjectedRoiAmount);
+        var monthlyProjectedRoi = Enumerable.Range(0, 12)
+            .Select(offset =>
+            {
+                var month = start.AddMonths(offset);
+                var next = month.AddMonths(1);
+                return orders
+                    .Where(order => order.OrderDate >= month && order.OrderDate < next)
+                    .Sum(Settings.GetProjectedRoiAmount);
+            })
+            .Where(value => value > 0m)
+            .ToList();
 
-        return projectedRoi / 12m;
+        return monthlyProjectedRoi.Count == 0 ? 0m : monthlyProjectedRoi.Average();
     }
 
     private decimal CalculateProjectedRoi(IEnumerable<Order> orders)
