@@ -755,6 +755,85 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="TrackingCopyIconButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="MinHeight" Value="18"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="5,0,0,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <Canvas Width="12"
+                                    Height="12"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                <Rectangle Canvas.Left="1.5"
+                                           Canvas.Top="1"
+                                           Width="7"
+                                           Height="7"
+                                           RadiusX="1.2"
+                                           RadiusY="1.2"
+                                           Stroke="{DynamicResource MutedTextBrush}"
+                                           StrokeThickness="1.2"/>
+                                <Rectangle Canvas.Left="4"
+                                           Canvas.Top="3.5"
+                                           Width="7"
+                                           Height="7"
+                                           RadiusX="1.2"
+                                           RadiusY="1.2"
+                                           Stroke="{DynamicResource TextBrush}"
+                                           StrokeThickness="1.2"/>
+                            </Canvas>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentDarkBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0"/>
+                                <Setter Property="IsHitTestVisible" Value="False"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
+                    <Setter Property="IsHitTestVisible" Value="True"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0"/>
+                    <Setter Property="IsHitTestVisible" Value="False"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="BulkActionButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="9,5"/>
             <Setter Property="MinHeight" Value="30"/>
@@ -913,6 +992,7 @@
                                FontStretch="SemiCondensed"
                                MaxWidth="42"
                                TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center"
                                Margin="0,0,4,0"/>
                     <Button Command="{Binding Data.OpenTrackingCommand, Source={StaticResource VmProxy}}"
                             Grid.Column="1"
@@ -921,19 +1001,21 @@
                             FontSize="10.5"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Stretch"
+                            VerticalAlignment="Center"
                             ToolTip="{Binding Number}">
                         <TextBlock Text="{Binding Number}"
                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
                                    FontSize="10.5"
                                    FontStretch="SemiCondensed"
                                    MaxWidth="170"
+                                   VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
                     </Button>
                     <Button x:Name="TrackingCopyButton"
                             Grid.Column="2"
                             Command="{Binding Data.CopyTextCommand, Source={StaticResource VmProxy}}"
                             CommandParameter="{Binding Number}"
-                            Style="{StaticResource CopyIconButtonStyle}"
+                            Style="{StaticResource TrackingCopyIconButtonStyle}"
                             ToolTip="Copy tracking number"
                             AutomationProperties.Name="Copy tracking number"/>
                 </Grid>
