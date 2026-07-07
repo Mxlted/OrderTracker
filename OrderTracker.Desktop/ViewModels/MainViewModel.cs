@@ -183,7 +183,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OpenOrderLinkCommand = new RelayCommand(parameter => OpenOrderLink(parameter as Order), parameter => parameter is Order);
         OpenTrackingCommand = new RelayCommand(parameter => OpenTracking(parameter as TrackingEntry), parameter => parameter is TrackingEntry);
         CopyTrackingNumbersCommand = new RelayCommand(parameter => CopyTrackingNumbers(parameter as Order), parameter => parameter is Order);
-        CopyEmailCommand = new RelayCommand(CopyEmail, HasEmailToCopy);
+        CopyTextCommand = new RelayCommand(CopyText, HasTextToCopy);
         AddOrderItemCommand = new RelayCommand(_ => AddFormItem());
         RemoveOrderItemCommand = new RelayCommand(parameter => RemoveFormItem(parameter as OrderItem), parameter => parameter is OrderItem && FormItems.Count > 1);
         SaveSettingsCommand = new RelayCommand(_ => SaveNow("Settings saved."));
@@ -337,7 +337,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICommand CopyTrackingNumbersCommand { get; }
 
-    public ICommand CopyEmailCommand { get; }
+    public ICommand CopyTextCommand { get; }
 
     public ICommand AddOrderItemCommand { get; }
 
@@ -2188,38 +2188,39 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public void CopyEmail(object? parameter)
+    public void CopyText(object? parameter)
     {
-        var email = ExtractEmail(parameter);
-        if (string.IsNullOrWhiteSpace(email))
+        var text = ExtractClipboardText(parameter);
+        if (string.IsNullOrWhiteSpace(text))
         {
-            LastActionMessage = "No account email is available to copy.";
+            LastActionMessage = "No value is available to copy.";
             return;
         }
 
         try
         {
-            Clipboard.SetText(email);
-            LastActionMessage = "Account email copied to clipboard.";
+            Clipboard.SetText(text);
+            LastActionMessage = "Copied to clipboard.";
         }
         catch (Exception ex)
         {
-            LastActionMessage = $"Could not copy account email: {ex.Message}";
+            LastActionMessage = $"Could not copy value: {ex.Message}";
         }
     }
 
-    private static bool HasEmailToCopy(object? parameter)
+    private static bool HasTextToCopy(object? parameter)
     {
-        return !string.IsNullOrWhiteSpace(ExtractEmail(parameter));
+        return !string.IsNullOrWhiteSpace(ExtractClipboardText(parameter));
     }
 
-    private static string ExtractEmail(object? parameter)
+    private static string ExtractClipboardText(object? parameter)
     {
         return parameter switch
         {
-            string email => email.Trim(),
+            string text => text.Trim(),
             Order order => order.AccountEmail.Trim(),
             AccountPreset preset => preset.Email.Trim(),
+            TrackingEntry tracking => tracking.Number.Trim(),
             _ => string.Empty
         };
     }
