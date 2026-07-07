@@ -201,6 +201,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DuplicateAccountPresetCommand = new RelayCommand(parameter => DuplicateAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ViewAccountOrdersCommand = new RelayCommand(parameter => ViewAccountOrders(parameter as AccountPreset), parameter => parameter is AccountPreset);
+        ClearAccountSessionCommand = new RelayCommand(parameter => ClearAccountSession(parameter as AccountPreset), parameter => parameter is AccountPreset);
         SelectVisibleAccountPresetsCommand = new RelayCommand(_ => SelectAccountPresets(AccountPresetsView, true));
         ClearSelectedAccountPresetsCommand = new RelayCommand(_ => ClearAccountPresetSelection(), _ => SelectedAccountPresetCount > 0);
         DeleteSelectedAccountPresetsCommand = new RelayCommand(_ => DeleteSelectedAccountPresets(), _ => SelectedAccountPresetCount > 0);
@@ -368,6 +369,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand ApplyAccountPresetCommand { get; }
 
     public ICommand ViewAccountOrdersCommand { get; }
+
+    public ICommand ClearAccountSessionCommand { get; }
 
     public ICommand SelectVisibleAccountPresetsCommand { get; }
 
@@ -1924,8 +1927,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private BrowserSessionContext? BuildBrowserSessionContext(AccountPreset preset, MerchantKind merchant, string url)
     {
         if (!Settings.UseAccountBrowserSessions ||
-            string.IsNullOrWhiteSpace(preset.Email) ||
             !IsAccountSessionUrl(merchant, url))
+        {
+            return null;
+        }
+
+        return BuildBrowserSessionContext(preset, merchant);
+    }
+
+    private static BrowserSessionContext? BuildBrowserSessionContext(AccountPreset preset, MerchantKind merchant)
+    {
+        if (string.IsNullOrWhiteSpace(preset.Email))
         {
             return null;
         }
@@ -2276,12 +2288,44 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var merchant = preset.MerchantHint == MerchantKind.Target ? MerchantKind.Target : MerchantKind.Amazon;
+        var merchant = GetAccountSessionMerchant(preset);
         var url = merchant == MerchantKind.Target
             ? CarrierRecognizer.BuildTargetOrderHistoryUrl()
             : CarrierRecognizer.BuildAmazonOrderHistoryUrl();
 
         LastActionMessage = _browserLauncher.OpenUrl(url, Settings, BuildBrowserSessionContext(preset, merchant, url));
+    }
+
+    private void ClearAccountSession(AccountPreset? preset)
+    {
+        if (preset is null)
+        {
+            return;
+        }
+
+        var merchant = GetAccountSessionMerchant(preset);
+        var sessionContext = BuildBrowserSessionContext(preset, merchant);
+        if (sessionContext is null)
+        {
+            LastActionMessage = "Add an email to the account before clearing its browser session.";
+            return;
+        }
+
+        var label = DescribeAccountPreset(preset);
+        ShowConfirmation(
+            "Clear account session",
+            $"Clear the {merchant} browser session for {label}? This removes cookies, sign-in state, and cached browser data for this account. A clean session folder will be created immediately.",
+            "Clear session",
+            () => LastActionMessage = _browserLauncher.ClearAccountSession(sessionContext),
+            isDanger: true,
+            cancelMessage: "Clear session canceled.");
+    }
+
+    private static MerchantKind GetAccountSessionMerchant(AccountPreset preset)
+    {
+        return preset.MerchantHint == MerchantKind.Target
+            ? MerchantKind.Target
+            : MerchantKind.Amazon;
     }
 
     private void ApplyPreset(ItemPreset? preset)

@@ -1356,6 +1356,9 @@
                         <MenuItem Header="View orders"
                                   Command="{Binding Data.ViewAccountOrdersCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
+                        <MenuItem Header="Clear session"
+                                  Command="{Binding Data.ClearAccountSessionCommand, Source={StaticResource VmProxy}}"
+                                  CommandParameter="{Binding}"/>
                         <MenuItem Header="Duplicate"
                                   Command="{Binding Data.DuplicateAccountPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -3185,7 +3188,7 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="Used" Binding="{Binding UsageCount}" Width="70" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Actions" Width="314">
+                                    <DataGridTemplateColumn Header="Actions" Width="402">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
@@ -3203,6 +3206,11 @@
                                                             Command="{Binding Data.ViewAccountOrdersCommand, Source={StaticResource VmProxy}}"
                                                             CommandParameter="{Binding}"
                                                             Style="{StaticResource GridActionButtonStyle}"
+                                                            Margin="0,0,5,0"/>
+                                                    <Button Content="Clear session"
+                                                            Command="{Binding Data.ClearAccountSessionCommand, Source={StaticResource VmProxy}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource GridDangerActionButtonStyle}"
                                                             Margin="0,0,5,0"/>
                                                     <Button Content="Delete"
                                                             Command="{Binding Data.DeleteAccountPresetCommand, Source={StaticResource VmProxy}}"
@@ -3330,7 +3338,14 @@
                                         <Button Content="View orders"
                                                 Command="{Binding ViewAccountOrdersCommand}"
                                                 CommandParameter="{Binding SelectedAccountPreset}"
-                                                Style="{StaticResource OrderEditorFooterButtonStyle}"/>
+                                                Style="{StaticResource OrderEditorFooterButtonStyle}"
+                                                Margin="0,0,0,8"/>
+                                        <Button Content="Clear session"
+                                                Command="{Binding ClearAccountSessionCommand}"
+                                                CommandParameter="{Binding SelectedAccountPreset}"
+                                                Style="{StaticResource DangerButtonStyle}"
+                                                MinHeight="36"
+                                                Padding="10,8"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

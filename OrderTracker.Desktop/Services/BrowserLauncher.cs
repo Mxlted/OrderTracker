@@ -51,6 +51,44 @@ public sealed class BrowserLauncher
         RememberLastActiveWindowBounds(settings);
     }
 
+    public string ClearAccountSession(BrowserSessionContext sessionContext)
+    {
+        if (string.IsNullOrWhiteSpace(sessionContext.AccountKey))
+        {
+            return "Select an account with an email before clearing its browser session.";
+        }
+
+        var sessionDirectory = GetSessionDirectory(sessionContext);
+        var accountName = string.IsNullOrWhiteSpace(sessionContext.AccountDisplayName)
+            ? "account"
+            : sessionContext.AccountDisplayName.Trim();
+        var merchantName = sessionContext.Merchant.ToString();
+
+        try
+        {
+            var hadExistingSession = Directory.Exists(sessionDirectory);
+            if (hadExistingSession)
+            {
+                Directory.Delete(sessionDirectory, recursive: true);
+            }
+
+            Directory.CreateDirectory(sessionDirectory);
+            RemoveTrackedWindowsForSession(sessionDirectory);
+
+            return hadExistingSession
+                ? $"Cleared {merchantName} session for {accountName}. A fresh session will be used the next time it opens."
+                : $"Created a fresh {merchantName} session for {accountName}.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Could not clear {merchantName} session for {accountName}. Close any open account-session browser windows and try again.";
+        }
+        catch (Exception ex)
+        {
+            return $"Could not clear {merchantName} session for {accountName}: {ex.Message}";
+        }
+    }
+
     private string OpenUrlNormally(Uri uri, AppSettings settings)
     {
         var customBrowserPath = settings.CustomBrowserPath.Trim();
@@ -157,7 +195,7 @@ public sealed class BrowserLauncher
         var windowHandle = WaitForLaunchedWindow(process, browserPath, existingWindows, TimeSpan.FromSeconds(3));
         if (process is not null || windowHandle != IntPtr.Zero)
         {
-            _openLinkWindows[windowKey] = new BrowserWindowReference(process, windowHandle);
+            _openLinkWindows[windowKey] = new BrowserWindowReference(process, windowHandle, sessionDirectory);
         }
 
         if (windowHandle != IntPtr.Zero)
@@ -243,6 +281,21 @@ public sealed class BrowserLauncher
             }
 
             reference.Dispose();
+        }
+    }
+
+    private void RemoveTrackedWindowsForSession(string sessionDirectory)
+    {
+        var normalizedSessionDirectory = NormalizeWindowKeyPart(sessionDirectory);
+        foreach (var pair in _openLinkWindows.ToArray())
+        {
+            if (string.Equals(
+                    NormalizeWindowKeyPart(pair.Value.SessionDirectory),
+                    normalizedSessionDirectory,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                RemoveTrackedWindow(pair.Key);
+            }
         }
     }
 
@@ -871,9 +924,14 @@ public sealed class BrowserLauncher
     {
         return string.Join(
             "|",
-            browserPath.Trim().ToLowerInvariant(),
-            (sessionDirectory ?? string.Empty).Trim().ToLowerInvariant(),
-            uri.AbsoluteUri.Trim().ToLowerInvariant());
+            NormalizeWindowKeyPart(browserPath),
+            NormalizeWindowKeyPart(sessionDirectory),
+            NormalizeWindowKeyPart(uri.AbsoluteUri));
+    }
+
+    private static string NormalizeWindowKeyPart(string? value)
+    {
+        return (value ?? string.Empty).Trim().ToLowerInvariant();
     }
 
     private static string GetSessionDirectory(BrowserSessionContext sessionContext)
@@ -982,13 +1040,16 @@ public sealed class BrowserLauncher
 
     private sealed class BrowserWindowReference : IDisposable
     {
-        public BrowserWindowReference(Process? process, IntPtr windowHandle)
+        public BrowserWindowReference(Process? process, IntPtr windowHandle, string? sessionDirectory)
         {
             Process = process;
             WindowHandle = windowHandle;
+            SessionDirectory = sessionDirectory;
         }
 
         public Process? Process { get; }
+
+        public string? SessionDirectory { get; }
 
         public IntPtr WindowHandle { get; set; }
 
