@@ -3608,7 +3608,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var max = points.Count == 0 ? 0m : points.Max(point => point.Value);
         foreach (var point in points)
         {
-            point.Percent = max <= 0 ? 0 : Math.Max(4, (double)(point.Value / max * 100));
+            point.Percent = max <= 0 || point.Value <= 0 ? 0 : Math.Max(4, (double)(point.Value / max * 100));
         }
     }
 
