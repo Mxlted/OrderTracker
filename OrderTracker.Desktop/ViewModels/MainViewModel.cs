@@ -257,6 +257,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<ChartPoint> MonthlySpend { get; } = new();
 
+    public ObservableCollection<ChartPoint> MonthlyProjectedRoi { get; } = new();
+
     public ObservableCollection<ChartPoint> YearlySpend { get; } = new();
 
     public ObservableCollection<ChartPoint> MerchantSpend { get; } = new();
@@ -3293,6 +3295,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         ReplaceChart(MonthlySpend, BuildMonthlySpend(orders));
+        ReplaceChart(MonthlyProjectedRoi, BuildMonthlyProjectedRoi(orders));
         ReplaceChart(YearlySpend, BuildYearlySpend(orders));
         ReplaceChart(MerchantSpend, BuildMerchantSpend(orders));
         ReplaceChart(StatusBreakdown, BuildStatusBreakdown(orders));
@@ -3421,6 +3424,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var projectedYearRoi = CalculateProjectedRoi(yearOrders);
         var monthEffectiveRoiPercent = CalculateEffectiveRoiPercent(monthSpend, projectedMonthRoi);
         var yearEffectiveRoiPercent = CalculateEffectiveRoiPercent(yearSpend, projectedYearRoi);
+        var averageMonthlyProjectedRoi = CalculateAverageMonthlyProjectedRoi(orders);
 
         return new[]
         {
@@ -3430,8 +3434,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             new MetricCard { Label = "This month", Value = monthSpend.ToString("C", CultureInfo.CurrentCulture), Detail = "Orders placed this month", Accent = "#FFB547" },
             new MetricCard { Label = "Projected month ROI", Value = projectedMonthRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(monthEffectiveRoiPercent)} effective ROI rate", Accent = "#2F9E7E" },
             new MetricCard { Label = "Projected year ROI", Value = projectedYearRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(yearEffectiveRoiPercent)} effective ROI rate", Accent = "#7C9BFF" },
+            new MetricCard { Label = "Avg monthly ROI", Value = averageMonthlyProjectedRoi.ToString("C", CultureInfo.CurrentCulture), Detail = "Projected, last 12 months", Accent = "#39B7A5" },
             new MetricCard { Label = "Completed", Value = deliveredThisMonth.ToString(CultureInfo.CurrentCulture), Detail = "Delivered this month", Accent = "#B389FF" }
         };
+    }
+
+    private decimal CalculateAverageMonthlyProjectedRoi(IReadOnlyCollection<Order> orders)
+    {
+        var start = GetMonthlyChartStart();
+        var end = start.AddMonths(12);
+        var projectedRoi = orders
+            .Where(order => order.OrderDate >= start && order.OrderDate < end)
+            .Sum(Settings.GetProjectedRoiAmount);
+
+        return projectedRoi / 12m;
     }
 
     private decimal CalculateProjectedRoi(IEnumerable<Order> orders)
@@ -3456,7 +3472,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private IEnumerable<ChartPoint> BuildMonthlySpend(IReadOnlyCollection<Order> orders)
     {
-        var start = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-11);
+        var start = GetMonthlyChartStart();
         var accents = new[] { "#5CC8FF", "#7C9BFF", "#B389FF", "#2F9E7E", "#FFB547", "#E05D5D" };
         var points = Enumerable.Range(0, 12)
             .Select(offset => new { Month = start.AddMonths(offset), Accent = accents[offset % accents.Length] })
@@ -3476,6 +3492,38 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         ApplyPercents(points);
         return points;
+    }
+
+    private IEnumerable<ChartPoint> BuildMonthlyProjectedRoi(IReadOnlyCollection<Order> orders)
+    {
+        var start = GetMonthlyChartStart();
+        var accents = new[] { "#39B7A5", "#5CC8FF", "#7C9BFF", "#B389FF", "#2F9E7E", "#FFB547" };
+        var points = Enumerable.Range(0, 12)
+            .Select(offset => new { Month = start.AddMonths(offset), Accent = accents[offset % accents.Length] })
+            .Select(point =>
+            {
+                var next = point.Month.AddMonths(1);
+                var value = orders
+                    .Where(order => order.OrderDate >= point.Month && order.OrderDate < next)
+                    .Sum(Settings.GetProjectedRoiAmount);
+
+                return new ChartPoint
+                {
+                    Label = point.Month.ToString("MMM yy", CultureInfo.CurrentCulture),
+                    Value = value,
+                    DisplayValue = value.ToString("C0", CultureInfo.CurrentCulture),
+                    Accent = point.Accent
+                };
+            })
+            .ToList();
+
+        ApplyPercents(points);
+        return points;
+    }
+
+    private static DateTime GetMonthlyChartStart()
+    {
+        return new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-11);
     }
 
     private IEnumerable<ChartPoint> BuildYearlySpend(IReadOnlyCollection<Order> orders)

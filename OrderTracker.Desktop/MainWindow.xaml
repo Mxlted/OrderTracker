@@ -1912,37 +1912,70 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <Border Grid.Column="0"
-                                    Background="{DynamicResource SurfaceBrush}"
-                                    BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="18"
-                                    Margin="0,0,14,14">
-                                <StackPanel>
-                                    <TextBlock Text="Monthly spend" Style="{StaticResource SectionTitleStyle}"/>
-                                    <ItemsControl ItemsSource="{Binding MonthlySpend}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="72"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="84"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
-                                                    <ProgressBar Grid.Column="1"
-                                                                 Value="{Binding Percent}"
-                                                                 Foreground="{Binding Accent}"
-                                                                 Style="{StaticResource ChartBarStyle}"
-                                                                 Margin="0,0,14,0"/>
-                                                    <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
+                            <StackPanel Grid.Column="0"
+                                        Margin="0,0,14,0">
+                                <Border Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Monthly spend" Style="{StaticResource SectionTitleStyle}"/>
+                                        <ItemsControl ItemsSource="{Binding MonthlySpend}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,0,0,12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="72"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="84"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
+                                                        <ProgressBar Grid.Column="1"
+                                                                     Value="{Binding Percent}"
+                                                                     Foreground="{Binding Accent}"
+                                                                     Style="{StaticResource ChartBarStyle}"
+                                                                     Margin="0,0,14,0"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="18"
+                                        Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <TextBlock Text="Monthly projected ROI" Style="{StaticResource SectionTitleStyle}"/>
+                                        <ItemsControl ItemsSource="{Binding MonthlyProjectedRoi}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,0,0,12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="72"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="84"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
+                                                        <ProgressBar Grid.Column="1"
+                                                                     Value="{Binding Percent}"
+                                                                     Foreground="{Binding Accent}"
+                                                                     Style="{StaticResource ChartBarStyle}"
+                                                                     Margin="0,0,14,0"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
 
                             <StackPanel Grid.Column="1">
                                 <Border Background="{DynamicResource SurfaceBrush}"
