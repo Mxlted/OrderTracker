@@ -284,7 +284,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public Array GroupOptions => Enum.GetValues<OrderGroupOption>();
 
-    public Array SortOptions => Enum.GetValues<OrderSortOption>();
+    public IReadOnlyList<OrderSortOption> SortOptions { get; } =
+    [
+        OrderSortOption.NewestFirst,
+        OrderSortOption.OldestFirst,
+        OrderSortOption.NewestCreated,
+        OrderSortOption.OldestCreated,
+        OrderSortOption.ExpectedSoonest,
+        OrderSortOption.Merchant,
+        OrderSortOption.Account,
+        OrderSortOption.Item,
+        OrderSortOption.Status,
+        OrderSortOption.TotalHighToLow,
+        OrderSortOption.TotalLowToHigh
+    ];
 
     public Array AccountGroupOptions => Enum.GetValues<AccountGroupOption>();
 
@@ -3177,6 +3190,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return SelectedSort switch
         {
             OrderSortOption.OldestFirst => new[] { new SortDescription(nameof(Order.OrderDate), ListSortDirection.Ascending) },
+            OrderSortOption.NewestCreated => new[]
+            {
+                new SortDescription(nameof(Order.CreatedAt), ListSortDirection.Descending)
+            },
+            OrderSortOption.OldestCreated => new[]
+            {
+                new SortDescription(nameof(Order.CreatedAt), ListSortDirection.Ascending)
+            },
             OrderSortOption.ExpectedSoonest => new[] { new SortDescription(nameof(Order.ExpectedSortDate), ListSortDirection.Ascending), new SortDescription(nameof(Order.OrderDate), ListSortDirection.Descending) },
             OrderSortOption.Merchant => new[] { new SortDescription(nameof(Order.Merchant), ListSortDirection.Ascending), new SortDescription(nameof(Order.OrderDate), ListSortDirection.Descending) },
             OrderSortOption.Account => new[] { new SortDescription(nameof(Order.AccountEmail), ListSortDirection.Ascending), new SortDescription(nameof(Order.OrderDate), ListSortDirection.Descending) },

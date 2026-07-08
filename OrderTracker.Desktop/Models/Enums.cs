@@ -60,15 +60,17 @@ public enum OrderGroupOption
 
 public enum OrderSortOption
 {
-    NewestFirst,
-    OldestFirst,
-    ExpectedSoonest,
-    Merchant,
-    Account,
-    Item,
-    Status,
-    TotalHighToLow,
-    TotalLowToHigh
+    NewestFirst = 0,
+    OldestFirst = 1,
+    ExpectedSoonest = 2,
+    Merchant = 3,
+    Account = 4,
+    Item = 5,
+    Status = 6,
+    TotalHighToLow = 7,
+    TotalLowToHigh = 8,
+    NewestCreated = 9,
+    OldestCreated = 10
 }
 
 public enum AccountGroupOption

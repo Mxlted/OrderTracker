@@ -17,6 +17,7 @@ public sealed class Order : ObservableObject
     private string _orderLink = string.Empty;
     private string _item = string.Empty;
     private int _quantity = 1;
+    private DateTime _createdAt = DateTime.Now;
     private decimal _unitPrice;
     private decimal _shippingCost;
     private decimal _tax;
@@ -109,6 +110,12 @@ public sealed class Order : ObservableObject
                 OnCostChanged();
             }
         }
+    }
+
+    public DateTime CreatedAt
+    {
+        get => _createdAt;
+        set => SetProperty(ref _createdAt, value);
     }
 
     public decimal UnitPrice

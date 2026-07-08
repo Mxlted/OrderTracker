@@ -18,12 +18,13 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         }
 
         var order = new Order();
+        var hasCreatedAt = false;
 
         while (reader.Read())
         {
             if (reader.TokenType == JsonTokenType.EndObject)
             {
-                return order;
+                return FinalizeRead(order, hasCreatedAt);
             }
 
             if (reader.TokenType != JsonTokenType.PropertyName)
@@ -37,6 +38,11 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
             if (Matches(propertyName, nameof(Order.Id)))
             {
                 order.Id = ReadString(ref reader);
+            }
+            else if (Matches(propertyName, nameof(Order.CreatedAt)))
+            {
+                order.CreatedAt = ReadDateTime(ref reader, DateTime.MinValue);
+                hasCreatedAt = true;
             }
             else if (Matches(propertyName, nameof(Order.IsArchived)))
             {
@@ -135,6 +141,7 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
     {
         writer.WriteStartObject();
         writer.WriteString(nameof(Order.Id), order.Id);
+        WriteProperty(writer, nameof(Order.CreatedAt), order.CreatedAt, options);
         writer.WriteBoolean(nameof(Order.IsArchived), order.IsArchived);
         writer.WriteString(nameof(Order.AccountEmail), order.AccountEmail);
         WriteProperty(writer, nameof(Order.Merchant), order.Merchant, options);
@@ -173,6 +180,16 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         WriteProperty(writer, nameof(Order.TrackingNumbers), order.TrackingNumbers, options);
         writer.WriteString(nameof(Order.Notes), order.Notes);
         writer.WriteEndObject();
+    }
+
+    private static Order FinalizeRead(Order order, bool hasCreatedAt)
+    {
+        if (!hasCreatedAt)
+        {
+            order.CreatedAt = DateTime.MinValue;
+        }
+
+        return order;
     }
 
     private static string ReadString(ref Utf8JsonReader reader)

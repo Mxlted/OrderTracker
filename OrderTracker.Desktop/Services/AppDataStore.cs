@@ -51,8 +51,9 @@ public sealed class AppDataStore
         try
         {
             var json = File.ReadAllText(DataFilePath);
+            var legacyOrderCreatedAt = File.GetLastWriteTime(DataFilePath);
             var data = JsonSerializer.Deserialize<AppData>(json, _jsonOptions) ?? CreateDefaultData();
-            NormalizeLoadedData(data);
+            NormalizeLoadedData(data, legacyOrderCreatedAt);
             return data;
         }
         catch
@@ -84,7 +85,7 @@ public sealed class AppDataStore
         }
     }
 
-    private static void NormalizeLoadedData(AppData data)
+    private static void NormalizeLoadedData(AppData data, DateTime legacyOrderCreatedAt)
     {
         data.Settings ??= new AppSettings();
         data.Settings.Columns ??= new ColumnSettings();
@@ -100,6 +101,7 @@ public sealed class AppDataStore
         foreach (var order in data.Orders)
         {
             EnsureId(order);
+            EnsureCreatedAt(order, legacyOrderCreatedAt);
             order.NormalizeItemCollection();
             order.TrackingNumbers ??= new();
             order.TrackingNumbers = new ObservableCollection<TrackingEntry>(order.TrackingNumbers.OfType<TrackingEntry>());
@@ -177,8 +179,16 @@ public sealed class AppDataStore
             }
         };
 
-        NormalizeLoadedData(data);
+        NormalizeLoadedData(data, DateTime.Now);
         return data;
+    }
+
+    private static void EnsureCreatedAt(Order order, DateTime legacyOrderCreatedAt)
+    {
+        if (order.CreatedAt <= DateTime.MinValue.AddDays(1))
+        {
+            order.CreatedAt = legacyOrderCreatedAt;
+        }
     }
 
     private void TryBackUpUnreadableDataFile()
