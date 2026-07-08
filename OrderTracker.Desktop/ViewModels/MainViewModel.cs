@@ -1909,10 +1909,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ApplyRecognitionQuietly(order);
+        var recognitionChanged = ApplyRecognitionQuietly(order);
         var url = CarrierRecognizer.BuildOrderUrl(order);
         LastActionMessage = "Opening order link...";
-        _ = OpenUrlAndRefreshOrdersAsync(url, BuildBrowserSessionContext(order, url));
+        _ = OpenUrlAndRefreshOrdersAsync(url, BuildBrowserSessionContext(order, url), recognitionChanged);
     }
 
     private void OpenTracking(TrackingEntry? tracking)
@@ -1929,22 +1929,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ApplyRecognitionQuietly(order);
+        var recognitionChanged = ApplyRecognitionQuietly(order);
         var url = CarrierRecognizer.BuildTrackingUrl(order, tracking);
         LastActionMessage = "Opening tracking link...";
-        _ = OpenUrlAndRefreshOrdersAsync(url, BuildBrowserSessionContext(order, url));
+        _ = OpenUrlAndRefreshOrdersAsync(url, BuildBrowserSessionContext(order, url), recognitionChanged);
     }
 
-    private async Task OpenUrlAndRefreshOrdersAsync(string url, BrowserSessionContext? sessionContext)
+    private async Task OpenUrlAndRefreshOrdersAsync(string url, BrowserSessionContext? sessionContext, bool refreshAfterOpen)
     {
         try
         {
             LastActionMessage = await OpenUrlAsync(url, sessionContext);
-            RefreshAfterOrderChange();
         }
         catch (Exception ex)
         {
             LastActionMessage = $"Could not open link: {ex.Message}";
+        }
+        finally
+        {
+            if (refreshAfterOpen)
+            {
+                RefreshAfterOrderChange();
+            }
         }
     }
 
@@ -2031,9 +2037,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                host.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void ApplyRecognitionQuietly(Order order)
+    private bool ApplyRecognitionQuietly(Order order)
     {
-        RunWithOrderChangeNotificationsSuppressed(() => CarrierRecognizer.ApplyRecognition(order));
+        var changed = false;
+        RunWithOrderChangeNotificationsSuppressed(() => changed = CarrierRecognizer.ApplyRecognition(order));
+        return changed;
     }
 
     private void RunWithOrderChangeNotificationsSuppressed(Action action)
@@ -4010,7 +4018,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 or nameof(AppSettings.WindowHeight)
                 or nameof(AppSettings.WindowLeft)
                 or nameof(AppSettings.WindowTop)
-                or nameof(AppSettings.IsWindowMaximized))
+                or nameof(AppSettings.IsWindowMaximized)
+                or nameof(AppSettings.BrowserLinkWindowWidth)
+                or nameof(AppSettings.BrowserLinkWindowHeight)
+                or nameof(AppSettings.BrowserLinkWindowLeft)
+                or nameof(AppSettings.BrowserLinkWindowTop))
         {
             return;
         }

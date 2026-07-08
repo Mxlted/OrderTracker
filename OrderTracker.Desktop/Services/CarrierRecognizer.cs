@@ -169,33 +169,68 @@ public static partial class CarrierRecognizer
         };
     }
 
-    public static void ApplyRecognition(Order order)
+    public static bool ApplyRecognition(Order order)
     {
+        var changed = false;
+
         foreach (var tracking in order.TrackingNumbers)
         {
-            tracking.Number = NormalizeTrackingNumber(tracking.Number);
-            tracking.Carrier = RecognizeCarrier(tracking.Number);
+            var normalizedNumber = NormalizeTrackingNumber(tracking.Number);
+            if (!string.Equals(tracking.Number, normalizedNumber, StringComparison.Ordinal))
+            {
+                tracking.Number = normalizedNumber;
+                changed = true;
+            }
+
+            var carrier = RecognizeCarrier(tracking.Number);
+            if (tracking.Carrier != carrier)
+            {
+                tracking.Carrier = carrier;
+                changed = true;
+            }
         }
 
         if (order.Merchant == MerchantKind.Unknown || order.Merchant == MerchantKind.Other)
         {
-            order.Merchant = RecognizeMerchant(order.Merchant.ToString(), order.OrderNumber, order.TrackingNumbers);
+            var merchant = RecognizeMerchant(order.Merchant.ToString(), order.OrderNumber, order.TrackingNumbers);
+            if (order.Merchant != merchant)
+            {
+                order.Merchant = merchant;
+                changed = true;
+            }
         }
 
         if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
         {
-            order.OrderLink = BuildAmazonOrderUrl(order.OrderNumber);
+            var orderLink = BuildAmazonOrderUrl(order.OrderNumber);
+            if (!string.Equals(order.OrderLink, orderLink, StringComparison.Ordinal))
+            {
+                order.OrderLink = orderLink;
+                changed = true;
+            }
         }
         else if (order.Merchant == MerchantKind.Target &&
                  string.IsNullOrWhiteSpace(order.OrderLink) &&
                  !string.IsNullOrWhiteSpace(order.OrderNumber))
         {
-            order.OrderLink = BuildTargetOrderUrl(order.OrderNumber);
+            var orderLink = BuildTargetOrderUrl(order.OrderNumber);
+            if (!string.Equals(order.OrderLink, orderLink, StringComparison.Ordinal))
+            {
+                order.OrderLink = orderLink;
+                changed = true;
+            }
         }
 
         foreach (var tracking in order.TrackingNumbers)
         {
-            tracking.Link = BuildTrackingUrl(order, tracking);
+            var link = BuildTrackingUrl(order, tracking);
+            if (!string.Equals(tracking.Link, link, StringComparison.Ordinal))
+            {
+                tracking.Link = link;
+                changed = true;
+            }
         }
+
+        return changed;
     }
 }
