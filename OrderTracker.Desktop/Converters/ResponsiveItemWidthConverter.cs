@@ -14,11 +14,11 @@ public sealed class ResponsiveItemWidthConverter : IValueConverter
         }
 
         var mode = parameter?.ToString();
-        var gap = string.Equals(mode, "Chart", StringComparison.OrdinalIgnoreCase) ? 14d : 12d;
-        var columns = string.Equals(mode, "Chart", StringComparison.OrdinalIgnoreCase)
-            ? GetChartColumns(availableWidth)
-            : GetMetricColumns(availableWidth);
-        var width = Math.Floor((availableWidth - gap * columns) / columns);
+        var isChart = string.Equals(mode, "Chart", StringComparison.OrdinalIgnoreCase);
+        var columns = isChart ? GetChartColumns(availableWidth) : GetMetricColumns(availableWidth);
+        var width = isChart
+            ? GetExternalMarginWidth(availableWidth, columns, 14d)
+            : availableWidth / columns;
 
         return Math.Max(0d, width);
     }
@@ -46,5 +46,10 @@ public sealed class ResponsiveItemWidthConverter : IValueConverter
     private static int GetChartColumns(double width)
     {
         return width >= 980 ? 2 : 1;
+    }
+
+    private static double GetExternalMarginWidth(double availableWidth, int columns, double itemRightMargin)
+    {
+        return Math.Floor((availableWidth - itemRightMargin * columns) / columns);
     }
 }

@@ -202,7 +202,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DuplicateAccountPresetCommand = new RelayCommand(parameter => DuplicateAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ViewAccountOrdersCommand = new RelayCommand(parameter => ViewAccountOrders(parameter as AccountPreset), parameter => parameter is AccountPreset);
-        ClearAccountSessionCommand = new RelayCommand(parameter => ClearAccountSession(parameter as AccountPreset), parameter => parameter is AccountPreset);
+        ClearAccountSessionCommand = new RelayCommand(parameter => ClearAccountSession(parameter as AccountPreset), parameter => CanClearAccountSession(parameter as AccountPreset));
         SelectVisibleAccountPresetsCommand = new RelayCommand(_ => SelectAccountPresets(AccountPresetsView, true));
         ClearSelectedAccountPresetsCommand = new RelayCommand(_ => ClearAccountPresetSelection(), _ => SelectedAccountPresetCount > 0);
         DeleteSelectedAccountPresetsCommand = new RelayCommand(_ => DeleteSelectedAccountPresets(), _ => SelectedAccountPresetCount > 0);
@@ -923,7 +923,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public AccountPreset? SelectedAccountPreset
     {
         get => _selectedAccountPreset;
-        set => SetProperty(ref _selectedAccountPreset, value);
+        set
+        {
+            if (SetProperty(ref _selectedAccountPreset, value))
+            {
+                RaiseAccountSessionCommandState();
+            }
+        }
     }
 
     public string AccountPresetSearchText
@@ -2345,11 +2351,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (!Settings.UseAccountBrowserSessions)
+        {
+            LastActionMessage = "Account browser sessions are turned off in Settings.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(preset.Email))
+        {
+            LastActionMessage = "Add an email to the account before clearing its browser session.";
+            return;
+        }
+
         var merchant = GetAccountSessionMerchant(preset);
         var sessionContext = BuildBrowserSessionContext(preset, merchant);
         if (sessionContext is null)
         {
-            LastActionMessage = "Add an email to the account before clearing its browser session.";
+            LastActionMessage = $"Browser sessions are not available for {merchant}.";
             return;
         }
 
@@ -2361,6 +2379,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => LastActionMessage = _browserLauncher.ClearAccountSession(sessionContext),
             isDanger: true,
             cancelMessage: "Clear session canceled.");
+    }
+
+    private bool CanClearAccountSession(AccountPreset? preset)
+    {
+        return Settings.UseAccountBrowserSessions &&
+            preset is not null &&
+            !string.IsNullOrWhiteSpace(preset.Email);
     }
 
     private static MerchantKind GetAccountSessionMerchant(AccountPreset preset)
@@ -3549,7 +3574,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     Accent = "#7C9BFF"
                 };
             })
-            .DefaultIfEmpty(new ChartPoint { Label = DateTime.Today.Year.ToString(CultureInfo.CurrentCulture), DisplayValue = 0m.ToString("C0", CultureInfo.CurrentCulture), Accent = "#7C9BFF" })
+            .DefaultIfEmpty(new ChartPoint { Label = DateTime.Today.Year.ToString(CultureInfo.CurrentCulture), DisplayValue = "No spend", Accent = "#6B7A90" })
             .ToList();
 
         ApplyPercents(points);
@@ -3573,7 +3598,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     Accent = GetMerchantAccent(group.Key)
                 };
             })
-            .DefaultIfEmpty(new ChartPoint { Label = "No orders", DisplayValue = 0m.ToString("C0", CultureInfo.CurrentCulture), Accent = "#6B7A90" })
+            .DefaultIfEmpty(new ChartPoint { Label = "No orders", DisplayValue = "No spend", Accent = "#6B7A90" })
             .ToList();
 
         ApplyPercents(points);
@@ -3905,6 +3930,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void SettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (sender == Settings && e.PropertyName == nameof(AppSettings.UseAccountBrowserSessions))
+        {
+            RaiseAccountSessionCommandState();
+        }
+
         if (sender == Settings &&
             e.PropertyName is nameof(AppSettings.WindowWidth)
                 or nameof(AppSettings.WindowHeight)
@@ -4078,6 +4108,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             AccountPresetIsFavorite = accountPreset.IsFavorite;
         }
 
+        if (e.PropertyName is nameof(AccountPreset.Email) or nameof(AccountPreset.MerchantHint))
+        {
+            RaiseAccountSessionCommandState();
+        }
+
         AccountPresetsView.Refresh();
         RefreshOrderAccountPresets();
         PersistIfNeeded();
@@ -4243,6 +4278,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (ClosePresetEditorCommand is RelayCommand closePresetEditorCommand)
         {
             closePresetEditorCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private void RaiseAccountSessionCommandState()
+    {
+        if (ClearAccountSessionCommand is RelayCommand clearAccountSessionCommand)
+        {
+            clearAccountSessionCommand.RaiseCanExecuteChanged();
         }
     }
 
