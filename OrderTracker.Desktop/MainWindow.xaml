@@ -3442,7 +3442,7 @@
                                     </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="Name"
                                                         Binding="{Binding DisplayName, Mode=OneWay}"
-                                                        Width="1.15*"
+                                                        Width="Auto"
                                                         MinWidth="120"
                                                         ElementStyle="{StaticResource CellTextWithToolTipStyle}"/>
                                     <DataGridTemplateColumn Header="Email"
@@ -3493,7 +3493,10 @@
                                                         MinWidth="58"
                                                         MaxWidth="70"
                                                         ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Actions" Width="Auto">
+                                    <DataGridTemplateColumn Header="Actions"
+                                                            Width="Auto"
+                                                            MinWidth="250"
+                                                            MaxWidth="402">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
@@ -3839,7 +3842,7 @@
                                     </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="Name"
                                                         Binding="{Binding Name}"
-                                                        Width="1.3*"
+                                                        Width="Auto"
                                                         MinWidth="140"
                                                         ElementStyle="{StaticResource CellTextStyle}"/>
                                     <DataGridTextColumn Header="Category"
@@ -3885,7 +3888,10 @@
                                                         MinWidth="58"
                                                         MaxWidth="70"
                                                         ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Actions" Width="Auto">
+                                    <DataGridTemplateColumn Header="Actions"
+                                                            Width="Auto"
+                                                            MinWidth="154"
+                                                            MaxWidth="226">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">

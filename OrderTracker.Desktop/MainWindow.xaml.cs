@@ -25,7 +25,9 @@ public partial class MainWindow : Window
 
     private readonly MainViewModel _viewModel = new();
     private readonly List<ScrollRailBinding> _scrollRailBindings = new();
+    private readonly List<ResponsiveDataGridBinding> _responsiveGridBindings = new();
     private bool _scrollRailBindingsInitialized;
+    private bool _responsiveGridBindingsInitialized;
     private bool _isCommandRequeryQueued;
 
     public static readonly RoutedUICommand SelectHighlightedRowsCommand = new(
@@ -110,11 +112,17 @@ public partial class MainWindow : Window
         _viewModel.Settings.PropertyChanged -= SettingsPropertyChanged;
         Loaded -= MainWindowLoaded;
         SizeChanged -= MainWindowSizeChanged;
+        foreach (var binding in _responsiveGridBindings)
+        {
+            binding.Detach();
+        }
+
         foreach (var binding in _scrollRailBindings)
         {
             binding.Detach();
         }
 
+        _responsiveGridBindings.Clear();
         _scrollRailBindings.Clear();
         _viewModel.Dispose();
         base.OnClosed(e);
@@ -137,6 +145,7 @@ public partial class MainWindow : Window
     private void MainWindowLoaded(object sender, RoutedEventArgs e)
     {
         InitializeScrollRailBindings();
+        InitializeResponsiveGridBindings();
         RefreshScrollRailBindings();
         Dispatcher.BeginInvoke(
             (Action)RefreshScrollRailBindings,
@@ -177,6 +186,25 @@ public partial class MainWindow : Window
     {
         var binding = new ScrollRailBinding(this, target, rail, column, canvas, thumb);
         _scrollRailBindings.Add(binding);
+        binding.Attach();
+    }
+
+    private void InitializeResponsiveGridBindings()
+    {
+        if (_responsiveGridBindingsInitialized)
+        {
+            return;
+        }
+
+        _responsiveGridBindingsInitialized = true;
+        AddResponsiveGridBinding(AccountsGrid);
+        AddResponsiveGridBinding(PresetsGrid);
+    }
+
+    private void AddResponsiveGridBinding(DataGrid grid)
+    {
+        var binding = new ResponsiveDataGridBinding(this, grid);
+        _responsiveGridBindings.Add(binding);
         binding.Attach();
     }
 
@@ -230,6 +258,150 @@ public partial class MainWindow : Window
                 CommandManager.InvalidateRequerySuggested();
             }),
             DispatcherPriority.Background);
+    }
+
+    private sealed class ResponsiveDataGridBinding
+    {
+        private const double MinimumStarWeight = 1;
+        private const double DefaultUnboundedStarWeightCap = 360;
+
+        private readonly MainWindow _owner;
+        private readonly DataGrid _grid;
+        private bool _isInitialized;
+        private bool _isInitializeQueued;
+        private bool _isApplyQueued;
+        private bool _isDetached;
+
+        public ResponsiveDataGridBinding(MainWindow owner, DataGrid grid)
+        {
+            _owner = owner;
+            _grid = grid;
+        }
+
+        public void Attach()
+        {
+            _isDetached = false;
+            _grid.Loaded += GridLoaded;
+            _grid.IsVisibleChanged += GridIsVisibleChanged;
+            _grid.SizeChanged += GridSizeChanged;
+            QueueInitialize(DispatcherPriority.Loaded);
+        }
+
+        public void Detach()
+        {
+            _isDetached = true;
+            _grid.Loaded -= GridLoaded;
+            _grid.IsVisibleChanged -= GridIsVisibleChanged;
+            _grid.SizeChanged -= GridSizeChanged;
+        }
+
+        private void QueueInitialize(DispatcherPriority priority)
+        {
+            if (_isDetached || _isInitialized || _isInitializeQueued || _isApplyQueued || !CanInitialize())
+            {
+                return;
+            }
+
+            _isInitializeQueued = true;
+            _owner.Dispatcher.BeginInvoke(
+                (Action)(() =>
+                {
+                    _isInitializeQueued = false;
+                    InitializeFromAutoWidths();
+                }),
+                priority);
+        }
+
+        private void InitializeFromAutoWidths()
+        {
+            if (_isDetached || _isInitialized || !CanInitialize())
+            {
+                return;
+            }
+
+            foreach (var column in _grid.Columns.Where(column => column.Visibility == Visibility.Visible))
+            {
+                column.Width = DataGridLength.Auto;
+            }
+
+            _grid.UpdateLayout();
+            QueueApplyResponsiveWidths();
+        }
+
+        private void QueueApplyResponsiveWidths()
+        {
+            if (_isApplyQueued)
+            {
+                return;
+            }
+
+            _isApplyQueued = true;
+            _owner.Dispatcher.BeginInvoke(
+                (Action)(() =>
+                {
+                    _isApplyQueued = false;
+                    ApplyResponsiveWidths();
+                }),
+                DispatcherPriority.ContextIdle);
+        }
+
+        private void ApplyResponsiveWidths()
+        {
+            if (_isDetached || _isInitialized || !CanInitialize())
+            {
+                return;
+            }
+
+            foreach (var column in _grid.Columns.Where(column => column.Visibility == Visibility.Visible))
+            {
+                var weight = GetResponsiveStarWeight(column);
+                column.Width = new DataGridLength(weight, DataGridLengthUnitType.Star);
+            }
+
+            _grid.ColumnWidth = new DataGridLength(1, DataGridLengthUnitType.Star);
+            _isInitialized = true;
+        }
+
+        private bool CanInitialize()
+        {
+            return _grid.IsLoaded &&
+                   _grid.IsVisible &&
+                   _grid.ActualWidth > 0 &&
+                   _grid.Columns.Count > 0;
+        }
+
+        private static double GetResponsiveStarWeight(DataGridColumn column)
+        {
+            var measuredWidth = column.ActualWidth;
+            var minimumWidth = Math.Max(MinimumStarWeight, column.MinWidth);
+            var maximumWeight = double.IsNaN(column.MaxWidth) || double.IsInfinity(column.MaxWidth)
+                ? DefaultUnboundedStarWeightCap
+                : Math.Max(minimumWidth, column.MaxWidth);
+
+            if (double.IsNaN(measuredWidth) || measuredWidth <= 0)
+            {
+                measuredWidth = column.Width.Value > 0
+                    ? column.Width.Value
+                    : minimumWidth;
+            }
+
+            return Math.Clamp(measuredWidth, minimumWidth, maximumWeight);
+        }
+
+        private void GridLoaded(object sender, RoutedEventArgs e)
+        {
+            QueueInitialize(DispatcherPriority.Loaded);
+        }
+
+        private void GridIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            QueueInitialize(DispatcherPriority.Loaded);
+        }
+
+        private void GridSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            QueueInitialize(DispatcherPriority.Loaded);
+        }
     }
 
     private sealed class ScrollRailBinding
