@@ -21,8 +21,11 @@ public sealed class AppSettings : ObservableObject
     private bool _autoSave = true;
     private AppTheme _theme = AppTheme.Dark;
     private OrderGroupOption _orderGroup = OrderGroupOption.None;
+    private OrderSortOption _orderSort = OrderSortOption.NewestFirst;
     private AccountGroupOption _accountGroup = AccountGroupOption.None;
+    private AccountSortOption _accountSort = AccountSortOption.NameAscending;
     private ItemGroupOption _itemGroup = ItemGroupOption.None;
+    private ItemSortOption _itemSort = ItemSortOption.NameAscending;
     private double _windowWidth;
     private double _windowHeight;
     private double? _windowLeft;
@@ -99,16 +102,34 @@ public sealed class AppSettings : ObservableObject
         set => SetProperty(ref _orderGroup, value);
     }
 
+    public OrderSortOption OrderSort
+    {
+        get => _orderSort;
+        set => SetProperty(ref _orderSort, value);
+    }
+
     public AccountGroupOption AccountGroup
     {
         get => _accountGroup;
         set => SetProperty(ref _accountGroup, value);
     }
 
+    public AccountSortOption AccountSort
+    {
+        get => _accountSort;
+        set => SetProperty(ref _accountSort, value);
+    }
+
     public ItemGroupOption ItemGroup
     {
         get => _itemGroup;
         set => SetProperty(ref _itemGroup, value);
+    }
+
+    public ItemSortOption ItemSort
+    {
+        get => _itemSort;
+        set => SetProperty(ref _itemSort, value);
     }
 
     public double WindowWidth

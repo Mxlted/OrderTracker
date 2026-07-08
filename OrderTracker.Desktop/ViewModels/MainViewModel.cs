@@ -19,15 +19,18 @@ namespace OrderTracker.Desktop.ViewModels;
 
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
+    private static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan SidebarClockDisplayOffset = TimeSpan.FromSeconds(1);
 
     private readonly AppDataStore _dataStore = new();
     private readonly BrowserLauncher _browserLauncher = new();
+    private readonly object _browserLaunchLock = new();
     private readonly DiscordWebhookService _discordWebhookService = new();
     private readonly NetworkTimeService _networkTimeService = new();
     private readonly MerchantFaviconService _merchantFaviconService = new();
     private readonly HashSet<MerchantKind> _pendingMerchantFaviconFetches = new();
     private readonly AppData _data;
+    private readonly DispatcherTimer _autosaveTimer = new();
     private readonly DispatcherTimer _sidebarClockTimer = new();
 
     private AppPage _selectedPage = AppPage.Dashboard;
@@ -119,8 +122,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _data = _dataStore.Load();
         _selectedGroup = Settings.OrderGroup;
+        _selectedSort = Settings.OrderSort;
         _selectedAccountGroup = Settings.AccountGroup;
+        _selectedAccountSort = Settings.AccountSort;
         _selectedItemGroup = Settings.ItemGroup;
+        _selectedItemSort = Settings.ItemSort;
         OrdersView = new ListCollectionView(Orders);
         OrdersView.Filter = FilterOrder;
         ArchivedOrdersView = new ListCollectionView(Orders);
@@ -180,8 +186,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ClearSelectedArchivedOrdersCommand = new RelayCommand(_ => ClearOrderSelection(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
         RestoreSelectedOrdersCommand = new RelayCommand(_ => RestoreSelectedOrders(), _ => SelectedArchivedOrderCount > 0);
         DeleteSelectedArchivedOrdersCommand = new RelayCommand(_ => DeleteSelectedOrders(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
-        OpenOrderLinkCommand = new RelayCommand(parameter => OpenOrderLink(parameter as Order), parameter => parameter is Order);
-        OpenTrackingCommand = new RelayCommand(parameter => OpenTracking(parameter as TrackingEntry), parameter => parameter is TrackingEntry);
+        OpenOrderLinkCommand = new RelayCommand(async parameter => await OpenOrderLinkAsync(parameter as Order), parameter => parameter is Order);
+        OpenTrackingCommand = new RelayCommand(async parameter => await OpenTrackingAsync(parameter as TrackingEntry), parameter => parameter is TrackingEntry);
         CopyTrackingNumbersCommand = new RelayCommand(parameter => CopyTrackingNumbers(parameter as Order), parameter => parameter is Order);
         CopyTextCommand = new RelayCommand(CopyText, HasTextToCopy);
         AddOrderItemCommand = new RelayCommand(_ => AddFormItem());
@@ -201,7 +207,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteAccountPresetCommand = new RelayCommand(parameter => DeleteAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         DuplicateAccountPresetCommand = new RelayCommand(parameter => DuplicateAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
-        ViewAccountOrdersCommand = new RelayCommand(parameter => ViewAccountOrders(parameter as AccountPreset), parameter => parameter is AccountPreset);
+        ViewAccountOrdersCommand = new RelayCommand(async parameter => await ViewAccountOrdersAsync(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ClearAccountSessionCommand = new RelayCommand(parameter => ClearAccountSession(parameter as AccountPreset), parameter => CanClearAccountSession(parameter as AccountPreset));
         SelectVisibleAccountPresetsCommand = new RelayCommand(_ => SelectAccountPresets(AccountPresetsView, true));
         ClearSelectedAccountPresetsCommand = new RelayCommand(_ => ClearAccountPresetSelection(), _ => SelectedAccountPresetCount > 0);
@@ -220,6 +226,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteSelectedPresetsCommand = new RelayCommand(_ => DeleteSelectedPresets(), _ => SelectedPresetCount > 0);
 
         FormItems.CollectionChanged += FormItemsCollectionChanged;
+        StartAutosaveTimer();
         ResetOrderForm();
         ResetAccountPresetForm();
         ResetPresetForm();
@@ -472,6 +479,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedSort, value))
             {
+                Settings.OrderSort = value;
                 ApplySortAndGroup();
             }
         }
@@ -497,6 +505,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedAccountSort, value))
             {
+                Settings.AccountSort = value;
                 ApplyAccountPresetSortAndGroup();
             }
         }
@@ -522,6 +531,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedItemSort, value))
             {
+                Settings.ItemSort = value;
                 ApplyItemPresetSortAndGroup();
             }
         }
@@ -1083,6 +1093,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void SaveNow(string? message = null)
     {
+        _autosaveTimer.Stop();
+
         try
         {
             _dataStore.Save(_data);
@@ -1099,7 +1111,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void CaptureBrowserLinkWindowPlacement()
     {
-        _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
+        lock (_browserLaunchLock)
+        {
+            _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
+        }
     }
 
     public int SetBulkSelection(IEnumerable<object> items, bool isSelected)
@@ -1878,7 +1893,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             cancelMessage: "Delete canceled.");
     }
 
-    private void OpenOrderLink(Order? order)
+    private async Task OpenOrderLinkAsync(Order? order)
     {
         if (order is null)
         {
@@ -1887,11 +1902,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         ApplyRecognitionQuietly(order);
         var url = CarrierRecognizer.BuildOrderUrl(order);
-        LastActionMessage = _browserLauncher.OpenUrl(url, Settings, BuildBrowserSessionContext(order, url));
+        LastActionMessage = "Opening order link...";
+        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(order, url));
         RefreshAfterOrderChange();
     }
 
-    private void OpenTracking(TrackingEntry? tracking)
+    private async Task OpenTrackingAsync(TrackingEntry? tracking)
     {
         if (tracking is null)
         {
@@ -1907,8 +1923,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         ApplyRecognitionQuietly(order);
         var url = CarrierRecognizer.BuildTrackingUrl(order, tracking);
-        LastActionMessage = _browserLauncher.OpenUrl(url, Settings, BuildBrowserSessionContext(order, url));
+        LastActionMessage = "Opening tracking link...";
+        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(order, url));
         RefreshAfterOrderChange();
+    }
+
+    private async Task<string> OpenUrlAsync(string url, BrowserSessionContext? sessionContext)
+    {
+        try
+        {
+            return await Task.Run(() =>
+            {
+                lock (_browserLaunchLock)
+                {
+                    return _browserLauncher.OpenUrl(url, Settings, sessionContext);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            return $"Could not open link: {ex.Message}";
+        }
     }
 
     private BrowserSessionContext? BuildBrowserSessionContext(Order order, string url)
@@ -2329,7 +2364,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PersistIfNeeded();
     }
 
-    private void ViewAccountOrders(AccountPreset? preset)
+    private async Task ViewAccountOrdersAsync(AccountPreset? preset)
     {
         if (preset is null)
         {
@@ -2341,7 +2376,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ? CarrierRecognizer.BuildTargetOrderHistoryUrl()
             : CarrierRecognizer.BuildAmazonOrderHistoryUrl();
 
-        LastActionMessage = _browserLauncher.OpenUrl(url, Settings, BuildBrowserSessionContext(preset, merchant, url));
+        LastActionMessage = "Opening account orders...";
+        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(preset, merchant, url));
     }
 
     private void ClearAccountSession(AccountPreset? preset)
@@ -3700,6 +3736,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void StartAutosaveTimer()
+    {
+        _autosaveTimer.Interval = AutosaveDelay;
+        _autosaveTimer.Tick += AutosaveTimerTick;
+    }
+
+    private void AutosaveTimerTick(object? sender, EventArgs e)
+    {
+        _autosaveTimer.Stop();
+        SaveNow();
+    }
+
     private void StartSidebarClock()
     {
         UpdateSidebarClock();
@@ -4328,8 +4376,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (Settings.AutoSave)
         {
-            SaveNow();
+            RequestAutosave();
         }
+    }
+
+    private void RequestAutosave()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _autosaveTimer.Stop();
+        _autosaveTimer.Start();
     }
 
     public void Dispose()
@@ -4340,6 +4399,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         _isDisposed = true;
+        _autosaveTimer.Stop();
+        _autosaveTimer.Tick -= AutosaveTimerTick;
         _sidebarClockTimer.Stop();
         _sidebarClockTimer.Tick -= SidebarClockTimerTick;
         FormItems.CollectionChanged -= FormItemsCollectionChanged;

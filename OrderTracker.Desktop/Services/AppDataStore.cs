@@ -24,6 +24,8 @@ public sealed class AppDataStore
             new SafeEnumJsonConverter<AccountGroupOption>(AccountGroupOption.None),
             new SafeEnumJsonConverter<ItemGroupOption>(ItemGroupOption.None),
             new SafeEnumJsonConverter<OrderSortOption>(OrderSortOption.NewestFirst),
+            new SafeEnumJsonConverter<AccountSortOption>(AccountSortOption.NameAscending),
+            new SafeEnumJsonConverter<ItemSortOption>(ItemSortOption.NameAscending),
             new SafeEnumJsonConverter<OrderStatus>(OrderStatus.Ordered),
             new SafeEnumJsonConverter<CarrierKind>(CarrierKind.Unknown),
             new JsonStringEnumConverter()
