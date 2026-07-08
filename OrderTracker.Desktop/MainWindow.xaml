@@ -2405,7 +2405,7 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Account"
-                                                    Width="1.05*"
+                                                    Width="Auto"
                                                     MinWidth="126"
                                                     Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2429,7 +2429,7 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Order"
-                                                    Width="1.15*"
+                                                    Width="Auto"
                                                     MinWidth="124"
                                                     Visibility="{Binding Data.Settings.Columns.ShowOrderNumber, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2491,7 +2491,7 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTextColumn Header="Qty"
-                                                Width="0.38*"
+                                                Width="Auto"
                                                 MinWidth="44"
                                                 MaxWidth="54"
                                                 Binding="{Binding TotalQuantity, Mode=OneWay}"
@@ -2520,7 +2520,7 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Tracking"
-                                                    Width="1.45*"
+                                                    Width="Auto"
                                                     MinWidth="150"
                                                     Visibility="{Binding Data.Settings.Columns.ShowTracking, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -3094,7 +3094,7 @@
                                 </DataGridTemplateColumn>
 
                                 <DataGridTemplateColumn Header="Account"
-                                                        Width="1.05*"
+                                                        Width="Auto"
                                                         MinWidth="126"
                                                         Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                     <DataGridTemplateColumn.CellTemplate>
@@ -3118,7 +3118,7 @@
                                 </DataGridTemplateColumn>
 
                                 <DataGridTemplateColumn Header="Order"
-                                                        Width="1.15*"
+                                                        Width="Auto"
                                                         MinWidth="124"
                                                         Visibility="{Binding Data.Settings.Columns.ShowOrderNumber, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                     <DataGridTemplateColumn.CellTemplate>
@@ -3167,7 +3167,7 @@
                                 </DataGridTemplateColumn>
 
                                 <DataGridTextColumn Header="Qty"
-                                                    Width="0.38*"
+                                                    Width="Auto"
                                                     MinWidth="44"
                                                     MaxWidth="54"
                                                     Binding="{Binding TotalQuantity, Mode=OneWay}"
@@ -3195,7 +3195,7 @@
                                 </DataGridTemplateColumn>
 
                                 <DataGridTemplateColumn Header="Tracking"
-                                                        Width="1.45*"
+                                                        Width="Auto"
                                                         MinWidth="150"
                                                         Visibility="{Binding Data.Settings.Columns.ShowTracking, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                     <DataGridTemplateColumn.CellTemplate>
