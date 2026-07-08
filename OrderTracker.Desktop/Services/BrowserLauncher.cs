@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -25,7 +26,7 @@ public sealed class BrowserLauncher
     private const int SmCxVirtualScreen = 78;
     private const int SmCyVirtualScreen = 79;
 
-    private readonly Dictionary<string, BrowserWindowReference> _openLinkWindows = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, BrowserWindowReference> _openLinkWindows = new(StringComparer.OrdinalIgnoreCase);
     private IntPtr _lastActiveLinkWindowHandle;
 
     public string OpenUrl(string url, AppSettings settings, BrowserSessionContext? sessionContext = null)
@@ -192,17 +193,17 @@ public sealed class BrowserLauncher
         AddBrowserArguments(startInfo, launchKind, uri, sessionDirectory, launchBounds);
 
         var process = Process.Start(startInfo);
-        var windowHandle = WaitForLaunchedWindow(process, browserPath, existingWindows, TimeSpan.FromSeconds(3));
-        if (process is not null || windowHandle != IntPtr.Zero)
+        if (process is not null)
         {
-            _openLinkWindows[windowKey] = new BrowserWindowReference(process, windowHandle, sessionDirectory);
-        }
-
-        if (windowHandle != IntPtr.Zero)
-        {
-            ApplyWindowBounds(windowHandle, launchBounds);
-            _lastActiveLinkWindowHandle = windowHandle;
-            RememberWindowBounds(windowHandle, settings);
+            var reference = new BrowserWindowReference(process, IntPtr.Zero, sessionDirectory);
+            TrackWindowReference(windowKey, reference);
+            _ = Task.Run(() => CompleteWindowTracking(
+                windowKey,
+                reference,
+                browserPath,
+                existingWindows,
+                launchBounds,
+                settings));
         }
 
         return openedMessage;
@@ -249,13 +250,13 @@ public sealed class BrowserLauncher
                 return false;
             }
 
-            windowHandle = WaitForMainWindowHandle(reference.Process, TimeSpan.FromMilliseconds(750));
+            windowHandle = GetMainWindowHandleIfReady(reference.Process);
             reference.WindowHandle = windowHandle;
 
             if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
             {
-                RemoveTrackedWindow(windowKey);
-                return false;
+                message = $"Still opening {uri.Host}.";
+                return true;
             }
 
             BringWindowToFront(windowHandle);
@@ -273,7 +274,7 @@ public sealed class BrowserLauncher
 
     private void RemoveTrackedWindow(string windowKey)
     {
-        if (_openLinkWindows.Remove(windowKey, out var reference))
+        if (_openLinkWindows.TryRemove(windowKey, out var reference))
         {
             if (reference.WindowHandle == _lastActiveLinkWindowHandle)
             {
@@ -281,6 +282,61 @@ public sealed class BrowserLauncher
             }
 
             reference.Dispose();
+        }
+    }
+
+    private void TrackWindowReference(string windowKey, BrowserWindowReference reference)
+    {
+        while (true)
+        {
+            if (_openLinkWindows.TryGetValue(windowKey, out var existingReference))
+            {
+                if (_openLinkWindows.TryUpdate(windowKey, reference, existingReference))
+                {
+                    existingReference.Dispose();
+                    return;
+                }
+
+                continue;
+            }
+
+            if (_openLinkWindows.TryAdd(windowKey, reference))
+            {
+                return;
+            }
+        }
+    }
+
+    private void CompleteWindowTracking(
+        string windowKey,
+        BrowserWindowReference reference,
+        string browserPath,
+        HashSet<IntPtr> existingWindows,
+        BrowserWindowBounds? launchBounds,
+        AppSettings settings)
+    {
+        try
+        {
+            var windowHandle = WaitForLaunchedWindow(reference.Process, browserPath, existingWindows, TimeSpan.FromSeconds(3));
+            if (windowHandle == IntPtr.Zero ||
+                !_openLinkWindows.TryGetValue(windowKey, out var currentReference) ||
+                !ReferenceEquals(currentReference, reference))
+            {
+                return;
+            }
+
+            reference.WindowHandle = windowHandle;
+            ApplyWindowBounds(windowHandle, launchBounds);
+            _lastActiveLinkWindowHandle = windowHandle;
+            RememberWindowBounds(windowHandle, settings);
+        }
+        catch
+        {
+            if (_openLinkWindows.TryGetValue(windowKey, out var currentReference) &&
+                ReferenceEquals(currentReference, reference))
+            {
+                RemoveTrackedWindow(windowKey);
+            }
         }
     }
 
@@ -392,7 +448,7 @@ public sealed class BrowserLauncher
                 pair.Value.Process.Refresh();
                 if (!pair.Value.Process.HasExited)
                 {
-                    var windowHandle = WaitForMainWindowHandle(pair.Value.Process, TimeSpan.FromMilliseconds(250));
+                    var windowHandle = GetMainWindowHandleIfReady(pair.Value.Process);
                     pair.Value.WindowHandle = windowHandle;
 
                     if (TryGetUsableWindowBounds(windowHandle, out bounds))
@@ -641,35 +697,21 @@ public sealed class BrowserLauncher
         }
     }
 
-    private static IntPtr WaitForMainWindowHandle(Process process, TimeSpan timeout)
+    private static IntPtr GetMainWindowHandleIfReady(Process process)
     {
-        var deadline = DateTime.UtcNow + timeout;
+        process.Refresh();
 
-        do
+        if (process.HasExited)
         {
-            process.Refresh();
-
-            if (process.HasExited)
-            {
-                return IntPtr.Zero;
-            }
-
-            if (process.MainWindowHandle != IntPtr.Zero)
-            {
-                return process.MainWindowHandle;
-            }
-
-            var windowHandle = FindVisibleWindowForProcess(process.Id);
-            if (windowHandle != IntPtr.Zero)
-            {
-                return windowHandle;
-            }
-
-            Thread.Sleep(100);
+            return IntPtr.Zero;
         }
-        while (DateTime.UtcNow < deadline);
 
-        return IntPtr.Zero;
+        if (process.MainWindowHandle != IntPtr.Zero)
+        {
+            return process.MainWindowHandle;
+        }
+
+        return FindVisibleWindowForProcess(process.Id);
     }
 
     private static IntPtr FindVisibleWindowForProcess(int processId)

@@ -24,7 +24,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private readonly AppDataStore _dataStore = new();
     private readonly BrowserLauncher _browserLauncher = new();
-    private readonly object _browserLaunchLock = new();
     private readonly DiscordWebhookService _discordWebhookService = new();
     private readonly NetworkTimeService _networkTimeService = new();
     private readonly MerchantFaviconService _merchantFaviconService = new();
@@ -186,8 +185,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ClearSelectedArchivedOrdersCommand = new RelayCommand(_ => ClearOrderSelection(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
         RestoreSelectedOrdersCommand = new RelayCommand(_ => RestoreSelectedOrders(), _ => SelectedArchivedOrderCount > 0);
         DeleteSelectedArchivedOrdersCommand = new RelayCommand(_ => DeleteSelectedOrders(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
-        OpenOrderLinkCommand = new RelayCommand(async parameter => await OpenOrderLinkAsync(parameter as Order), parameter => parameter is Order);
-        OpenTrackingCommand = new RelayCommand(async parameter => await OpenTrackingAsync(parameter as TrackingEntry), parameter => parameter is TrackingEntry);
+        OpenOrderLinkCommand = new RelayCommand(parameter => OpenOrderLink(parameter as Order), parameter => parameter is Order);
+        OpenTrackingCommand = new RelayCommand(parameter => OpenTracking(parameter as TrackingEntry), parameter => parameter is TrackingEntry);
         CopyTrackingNumbersCommand = new RelayCommand(parameter => CopyTrackingNumbers(parameter as Order), parameter => parameter is Order);
         CopyTextCommand = new RelayCommand(CopyText, HasTextToCopy);
         AddOrderItemCommand = new RelayCommand(_ => AddFormItem());
@@ -1124,10 +1123,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void CaptureBrowserLinkWindowPlacement()
     {
-        lock (_browserLaunchLock)
-        {
-            _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
-        }
+        _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
     }
 
     public int SetBulkSelection(IEnumerable<object> items, bool isSelected)
@@ -1906,7 +1902,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             cancelMessage: "Delete canceled.");
     }
 
-    private async Task OpenOrderLinkAsync(Order? order)
+    private void OpenOrderLink(Order? order)
     {
         if (order is null)
         {
@@ -1916,11 +1912,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ApplyRecognitionQuietly(order);
         var url = CarrierRecognizer.BuildOrderUrl(order);
         LastActionMessage = "Opening order link...";
-        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(order, url));
-        RefreshAfterOrderChange();
+        _ = OpenUrlAndRefreshOrdersAsync(url, BuildBrowserSessionContext(order, url));
     }
 
-    private async Task OpenTrackingAsync(TrackingEntry? tracking)
+    private void OpenTracking(TrackingEntry? tracking)
     {
         if (tracking is null)
         {
@@ -1937,21 +1932,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ApplyRecognitionQuietly(order);
         var url = CarrierRecognizer.BuildTrackingUrl(order, tracking);
         LastActionMessage = "Opening tracking link...";
-        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(order, url));
-        RefreshAfterOrderChange();
+        _ = OpenUrlAndRefreshOrdersAsync(url, BuildBrowserSessionContext(order, url));
+    }
+
+    private async Task OpenUrlAndRefreshOrdersAsync(string url, BrowserSessionContext? sessionContext)
+    {
+        try
+        {
+            LastActionMessage = await OpenUrlAsync(url, sessionContext);
+            RefreshAfterOrderChange();
+        }
+        catch (Exception ex)
+        {
+            LastActionMessage = $"Could not open link: {ex.Message}";
+        }
     }
 
     private async Task<string> OpenUrlAsync(string url, BrowserSessionContext? sessionContext)
     {
         try
         {
-            return await Task.Run(() =>
-            {
-                lock (_browserLaunchLock)
-                {
-                    return _browserLauncher.OpenUrl(url, Settings, sessionContext);
-                }
-            });
+            return await Task.Run(() => _browserLauncher.OpenUrl(url, Settings, sessionContext));
         }
         catch (Exception ex)
         {
