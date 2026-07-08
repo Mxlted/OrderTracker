@@ -3397,6 +3397,7 @@
                                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                       ScrollViewer.VerticalScrollBarVisibility="Hidden"
                                       ScrollViewer.CanContentScroll="False"
+                                      ColumnWidth="*"
                                       SelectionChanged="SelectableGridSelectionChanged">
                                 <DataGrid.GroupStyle>
                                     <GroupStyle>
@@ -3439,8 +3440,15 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Name" Binding="{Binding DisplayName, Mode=OneWay}" Width="*" ElementStyle="{StaticResource CellTextWithToolTipStyle}"/>
-                                    <DataGridTemplateColumn Header="Email" Width="250">
+                                    <DataGridTextColumn Header="Name"
+                                                        Binding="{Binding DisplayName, Mode=OneWay}"
+                                                        Width="1.15*"
+                                                        MinWidth="120"
+                                                        ElementStyle="{StaticResource CellTextWithToolTipStyle}"/>
+                                    <DataGridTemplateColumn Header="Email"
+                                                            Width="Auto"
+                                                            MinWidth="180"
+                                                            MaxWidth="320">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Grid VerticalAlignment="Center">
@@ -3460,8 +3468,16 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Merchant" Binding="{Binding MerchantHint}" Width="120" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Fav" Width="60">
+                                    <DataGridTextColumn Header="Merchant"
+                                                        Binding="{Binding MerchantHint}"
+                                                        Width="Auto"
+                                                        MinWidth="96"
+                                                        MaxWidth="126"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTemplateColumn Header="Fav"
+                                                            Width="Auto"
+                                                            MinWidth="52"
+                                                            MaxWidth="60">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3471,8 +3487,13 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Used" Binding="{Binding UsageCount}" Width="70" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Actions" Width="402">
+                                    <DataGridTextColumn Header="Used"
+                                                        Binding="{Binding UsageCount}"
+                                                        Width="Auto"
+                                                        MinWidth="58"
+                                                        MaxWidth="70"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTemplateColumn Header="Actions" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
@@ -3773,6 +3794,7 @@
                                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                       ScrollViewer.VerticalScrollBarVisibility="Hidden"
                                       ScrollViewer.CanContentScroll="False"
+                                      ColumnWidth="*"
                                       SelectionChanged="SelectableGridSelectionChanged">
                                 <DataGrid.GroupStyle>
                                     <GroupStyle>
@@ -3815,12 +3837,39 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="150" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTextColumn Header="Merchant" Binding="{Binding MerchantHint}" Width="120" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTextColumn Header="Qty" Binding="{Binding DefaultQuantity}" Width="60" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTextColumn Header="Price" Binding="{Binding DefaultUnitPrice, StringFormat=C}" Width="90" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Fav" Width="60">
+                                    <DataGridTextColumn Header="Name"
+                                                        Binding="{Binding Name}"
+                                                        Width="1.3*"
+                                                        MinWidth="140"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTextColumn Header="Category"
+                                                        Binding="{Binding Category}"
+                                                        Width="Auto"
+                                                        MinWidth="100"
+                                                        MaxWidth="180"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTextColumn Header="Merchant"
+                                                        Binding="{Binding MerchantHint}"
+                                                        Width="Auto"
+                                                        MinWidth="96"
+                                                        MaxWidth="126"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTextColumn Header="Qty"
+                                                        Binding="{Binding DefaultQuantity}"
+                                                        Width="Auto"
+                                                        MinWidth="44"
+                                                        MaxWidth="60"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTextColumn Header="Price"
+                                                        Binding="{Binding DefaultUnitPrice, StringFormat=C}"
+                                                        Width="Auto"
+                                                        MinWidth="74"
+                                                        MaxWidth="96"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTemplateColumn Header="Fav"
+                                                            Width="Auto"
+                                                            MinWidth="52"
+                                                            MaxWidth="60">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3830,8 +3879,13 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Used" Binding="{Binding UsageCount}" Width="70" ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Actions" Width="226">
+                                    <DataGridTextColumn Header="Used"
+                                                        Binding="{Binding UsageCount}"
+                                                        Width="Auto"
+                                                        MinWidth="58"
+                                                        MaxWidth="70"
+                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTemplateColumn Header="Actions" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
