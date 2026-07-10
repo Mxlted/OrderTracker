@@ -31,16 +31,6 @@ public partial class MainWindow : Window
     private bool _isCommandRequeryQueued;
     private WindowState _lastNonMinimizedWindowState = WindowState.Normal;
 
-    public static readonly RoutedUICommand SelectHighlightedRowsCommand = new(
-        "Select",
-        nameof(SelectHighlightedRowsCommand),
-        typeof(MainWindow));
-
-    public static readonly RoutedUICommand UnselectHighlightedRowsCommand = new(
-        "Unselect",
-        nameof(UnselectHighlightedRowsCommand),
-        typeof(MainWindow));
-
     public static readonly RoutedUICommand FocusSearchCommand = new(
         "Focus search",
         nameof(FocusSearchCommand),
@@ -84,14 +74,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _viewModel;
-        CommandBindings.Add(new CommandBinding(
-            SelectHighlightedRowsCommand,
-            SelectHighlightedRowsExecuted,
-            CanToggleHighlightedRowsSelection));
-        CommandBindings.Add(new CommandBinding(
-            UnselectHighlightedRowsCommand,
-            UnselectHighlightedRowsExecuted,
-            CanToggleHighlightedRowsSelection));
         CommandBindings.Add(new CommandBinding(
             FocusSearchCommand,
             FocusSearchExecuted,
@@ -835,68 +817,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CanToggleHighlightedRowsSelection(object sender, CanExecuteRoutedEventArgs e)
-    {
-        var grid = GetCommandGrid(e);
-        var fallback = GetCommandItem(e);
-        e.CanExecute =
-            grid?.SelectedItems.Cast<object>().Any(IsBulkSelectableItem) == true ||
-            fallback is not null && IsBulkSelectableItem(fallback);
-        e.Handled = true;
-    }
-
-    private void SelectHighlightedRowsExecuted(object sender, ExecutedRoutedEventArgs e)
-    {
-        SetHighlightedRowsSelection(e, true);
-    }
-
-    private void UnselectHighlightedRowsExecuted(object sender, ExecutedRoutedEventArgs e)
-    {
-        SetHighlightedRowsSelection(e, false);
-    }
-
-    private void SetHighlightedRowsSelection(ExecutedRoutedEventArgs e, bool isSelected)
-    {
-        var grid = GetCommandGrid(e);
-        var fallback = GetCommandItem(e);
-        var highlightedItems = grid is null
-            ? new List<object>()
-            : grid.SelectedItems
-                .Cast<object>()
-                .Where(IsBulkSelectableItem)
-                .ToList();
-
-        if (highlightedItems.Count == 0 && fallback is not null && IsBulkSelectableItem(fallback))
-        {
-            highlightedItems.Add(fallback);
-        }
-
-        if (highlightedItems.Count == 0)
-        {
-            var action = isSelected ? "select" : "unselect";
-            _viewModel.LastActionMessage = $"Highlight rows first, then {action} them.";
-            e.Handled = true;
-            return;
-        }
-
-        var changed = 0;
-        changed = _viewModel.SetBulkSelection(highlightedItems, isSelected);
-
-        var rowWord = highlightedItems.Count == 1 ? "row" : "rows";
-        if (changed == 0)
-        {
-            var alreadyState = isSelected ? "already selected" : "already unselected";
-            _viewModel.LastActionMessage = $"{highlightedItems.Count} highlighted {rowWord} {alreadyState}.";
-        }
-        else
-        {
-            var action = isSelected ? "Selected" : "Unselected";
-            _viewModel.LastActionMessage = $"{action} {changed} highlighted {rowWord}.";
-        }
-
-        e.Handled = true;
-    }
-
     private static bool IsInteractiveElement(DependencyObject? source)
     {
         while (source is not null)
@@ -910,50 +830,6 @@ public partial class MainWindow : Window
         }
 
         return false;
-    }
-
-    private static bool IsBulkSelectableItem(object item)
-    {
-        return item is Order or AccountPreset or ItemPreset;
-    }
-
-    private static DataGrid? GetCommandGrid(RoutedEventArgs e)
-    {
-        if (e.Source is DataGrid sourceGrid)
-        {
-            return sourceGrid;
-        }
-
-        if (e.OriginalSource is DataGrid originalGrid)
-        {
-            return originalGrid;
-        }
-
-        if (e.Source is DependencyObject sourceDependency)
-        {
-            var sourceParentGrid = FindVisualParent<DataGrid>(sourceDependency);
-            if (sourceParentGrid is not null)
-            {
-                return sourceParentGrid;
-            }
-        }
-
-        return FindVisualParent<DataGrid>(e.OriginalSource as DependencyObject);
-    }
-
-    private static object? GetCommandItem(RoutedEventArgs e)
-    {
-        if (e.Source is FrameworkElement { DataContext: { } sourceContext } && IsBulkSelectableItem(sourceContext))
-        {
-            return sourceContext;
-        }
-
-        if (e.OriginalSource is FrameworkElement { DataContext: { } originalContext } && IsBulkSelectableItem(originalContext))
-        {
-            return originalContext;
-        }
-
-        return null;
     }
 
     private static T? FindVisualParent<T>(DependencyObject? source)

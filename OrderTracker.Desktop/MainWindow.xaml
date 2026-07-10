@@ -49,7 +49,6 @@
 
         <conv:PageVisibilityConverter x:Key="PageVisibility"/>
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
-        <conv:BoolToGridLengthConverter x:Key="BoolToGridLength"/>
         <conv:StatusBrushConverter x:Key="StatusBrush"/>
         <conv:ChartAccentBrushConverter x:Key="ChartAccentBrush"/>
         <conv:MerchantBrushConverter x:Key="MerchantBrush"/>
@@ -703,14 +702,6 @@
         </Style>
 
         <Style x:Key="GridActionButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Padding" Value="8,4"/>
-            <Setter Property="MinHeight" Value="{DynamicResource GridActionMinHeight}"/>
-            <Setter Property="FontSize" Value="{DynamicResource GridActionFontSize}"/>
-            <Setter Property="HorizontalAlignment" Value="Left"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-
-        <Style x:Key="GridDangerActionButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource DangerButtonStyle}">
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="MinHeight" Value="{DynamicResource GridActionMinHeight}"/>
             <Setter Property="FontSize" Value="{DynamicResource GridActionFontSize}"/>
@@ -1762,20 +1753,6 @@
         </Style>
 
         <Style x:Key="CompactCellTextWithToolTipStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CompactCellTextStyle}">
-            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-            <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
-            <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>
-            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
-            <Style.Triggers>
-                <Trigger Property="Text" Value="">
-                    <Setter Property="ToolTip" Value="{x:Null}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="OrderGridItemTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextStyle}">
-            <Setter Property="FontSize" Value="11.5"/>
-            <Setter Property="FontStretch" Value="Condensed"/>
             <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
             <Setter Property="ToolTipService.InitialShowDelay" Value="0"/>
             <Setter Property="ToolTipService.BetweenShowDelay" Value="0"/>

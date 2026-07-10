@@ -204,13 +204,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             parameter => parameter is Order { IsArchived: false, HasPrimaryAction: true });
         ArchiveCompletedOrdersCommand = new RelayCommand(_ => ArchiveCompletedOrders(), _ => CompletedOrdersReadyToArchiveCount > 0);
         RestoreOrderCommand = new RelayCommand(parameter => RestoreOrder(parameter as Order), parameter => parameter is Order { IsArchived: true });
-        SelectVisibleOrdersCommand = new RelayCommand(_ => SelectOrders(OrdersView, true));
         ClearSelectedOrdersCommand = new RelayCommand(_ => ClearOrderSelection(includeArchived: false), _ => SelectedActiveOrderCount > 0);
         MarkSelectedOrdersCompletedCommand = new RelayCommand(_ => MarkSelectedOrdersCompleted(), _ => SelectedIncompleteActiveOrderCount > 0);
         ArchiveSelectedCompletedOrdersCommand = new RelayCommand(_ => ArchiveSelectedCompletedOrders(), _ => SelectedCompletedActiveOrderCount > 0);
         DeleteSelectedOrdersCommand = new RelayCommand(_ => DeleteSelectedOrders(includeArchived: false), _ => SelectedActiveOrderCount > 0);
         ToggleVisibleOrderItemsExpansionCommand = new RelayCommand(_ => ToggleVisibleOrderItemsExpansion(), _ => HasVisibleOrderItems);
-        SelectVisibleArchivedOrdersCommand = new RelayCommand(_ => SelectOrders(ArchivedOrdersView, true));
         ClearSelectedArchivedOrdersCommand = new RelayCommand(_ => ClearOrderSelection(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
         RestoreSelectedOrdersCommand = new RelayCommand(_ => RestoreSelectedOrders(), _ => SelectedArchivedOrderCount > 0);
         DeleteSelectedArchivedOrdersCommand = new RelayCommand(_ => DeleteSelectedOrders(includeArchived: true), _ => SelectedArchivedOrderCount > 0);
@@ -241,7 +239,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ViewAccountOrdersCommand = new RelayCommand(async parameter => await ViewAccountOrdersAsync(parameter as AccountPreset), parameter => CanViewAccountOrders(parameter as AccountPreset));
         ClearAccountSessionCommand = new RelayCommand(parameter => ClearAccountSession(parameter as AccountPreset), parameter => CanClearAccountSession(parameter as AccountPreset));
-        SelectVisibleAccountPresetsCommand = new RelayCommand(_ => SelectAccountPresets(AccountPresetsView, true));
         ClearSelectedAccountPresetsCommand = new RelayCommand(_ => ClearAccountPresetSelection(), _ => SelectedAccountPresetCount > 0);
         DeleteSelectedAccountPresetsCommand = new RelayCommand(_ => DeleteSelectedAccountPresets(), _ => SelectedAccountPresetCount > 0);
         OpenAccountUsageAuditCommand = new RelayCommand(parameter => OpenAccountUsageAudit(parameter as AccountPreset), parameter => parameter is AccountPreset);
@@ -256,7 +253,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeletePresetCommand = new RelayCommand(parameter => DeletePreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         DuplicatePresetCommand = new RelayCommand(parameter => DuplicatePreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         ApplyPresetCommand = new RelayCommand(parameter => ApplyPreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
-        SelectVisiblePresetsCommand = new RelayCommand(_ => SelectItemPresets(PresetsView, true));
         ClearSelectedPresetsCommand = new RelayCommand(_ => ClearItemPresetSelection(), _ => SelectedPresetCount > 0);
         DeleteSelectedPresetsCommand = new RelayCommand(_ => DeleteSelectedPresets(), _ => SelectedPresetCount > 0);
         SaveCurrentCommand = new RelayCommand(_ => SaveCurrent(), _ => CanSaveCurrent);
@@ -309,12 +305,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICollectionView OrderItemPresetsView { get; }
 
     public ObservableCollection<MetricCard> MetricCards { get; } = new();
-
-    public ObservableCollection<ChartPoint> MonthlySpend { get; } = new();
-
-    public ObservableCollection<ChartPoint> MonthlyProjectedRoi { get; } = new();
-
-    public ObservableCollection<ChartPoint> YearlySpend { get; } = new();
 
     public ObservableCollection<ChartPoint> MerchantSpend { get; } = new();
 
@@ -413,8 +403,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICommand RestoreOrderCommand { get; }
 
-    public ICommand SelectVisibleOrdersCommand { get; }
-
     public ICommand ClearSelectedOrdersCommand { get; }
 
     public ICommand MarkSelectedOrdersCompletedCommand { get; }
@@ -424,8 +412,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand DeleteSelectedOrdersCommand { get; }
 
     public ICommand ToggleVisibleOrderItemsExpansionCommand { get; }
-
-    public ICommand SelectVisibleArchivedOrdersCommand { get; }
 
     public ICommand ClearSelectedArchivedOrdersCommand { get; }
 
@@ -485,8 +471,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICommand ClearAccountSessionCommand { get; }
 
-    public ICommand SelectVisibleAccountPresetsCommand { get; }
-
     public ICommand ClearSelectedAccountPresetsCommand { get; }
 
     public ICommand DeleteSelectedAccountPresetsCommand { get; }
@@ -512,8 +496,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand DuplicatePresetCommand { get; }
 
     public ICommand ApplyPresetCommand { get; }
-
-    public ICommand SelectVisiblePresetsCommand { get; }
 
     public ICommand ClearSelectedPresetsCommand { get; }
 
@@ -1521,20 +1503,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _browserLauncher.CaptureTrackedLinkWindowBounds(Settings);
     }
 
-    public int SetBulkSelection(IEnumerable<object> items, bool isSelected)
-    {
-        var changed = 0;
-        RunWithBulkSelectionNotificationsSuppressed(() =>
-        {
-            foreach (var item in items)
-            {
-                changed += SetBulkSelected(item, isSelected) ? 1 : 0;
-            }
-        });
-
-        return changed;
-    }
-
     private void ClearMerchantIconCache()
     {
         var removed = _merchantFaviconService.ClearCache();
@@ -1546,24 +1514,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (Settings.FetchMerchantFavicons)
         {
             QueueMerchantFaviconFetch();
-        }
-    }
-
-    private static bool SetBulkSelected(object item, bool isSelected)
-    {
-        switch (item)
-        {
-            case Order order when order.IsSelected != isSelected:
-                order.IsSelected = isSelected;
-                return true;
-            case AccountPreset accountPreset when accountPreset.IsSelected != isSelected:
-                accountPreset.IsSelected = isSelected;
-                return true;
-            case ItemPreset itemPreset when itemPreset.IsSelected != isSelected:
-                itemPreset.IsSelected = isSelected;
-                return true;
-            default:
-                return false;
         }
     }
 
@@ -4553,24 +4503,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return points;
     }
 
-    private decimal CalculateAverageMonthlyProjectedRoi(IReadOnlyCollection<Order> orders)
-    {
-        var start = GetMonthlyChartStart();
-        var monthlyProjectedRoi = Enumerable.Range(0, 12)
-            .Select(offset =>
-            {
-                var month = start.AddMonths(offset);
-                var next = month.AddMonths(1);
-                return orders
-                    .Where(order => order.OrderDate >= month && order.OrderDate < next)
-                    .Sum(Settings.GetProjectedRoiAmount);
-            })
-            .Where(value => value > 0m)
-            .ToList();
-
-        return monthlyProjectedRoi.Count == 0 ? 0m : monthlyProjectedRoi.Average();
-    }
-
     private decimal CalculateProjectedRoi(IEnumerable<Order> orders)
     {
         return orders.Sum(Settings.GetProjectedRoiAmount);
@@ -4584,85 +4516,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private static string FormatPercent(decimal percent)
     {
         return string.Concat(Math.Max(0m, percent).ToString("0.##", CultureInfo.CurrentCulture), "%");
-    }
-
-    private IEnumerable<ChartPoint> BuildMonthlySpend(IReadOnlyCollection<Order> orders)
-    {
-        var start = GetMonthlyChartStart();
-        var accents = new[] { "#5CC8FF", "#7C9BFF", "#B389FF", "#2F9E7E", "#FFB547", "#E05D5D" };
-        var points = Enumerable.Range(0, 12)
-            .Select(offset => new { Month = start.AddMonths(offset), Accent = accents[offset % accents.Length] })
-            .Select(point =>
-            {
-                var next = point.Month.AddMonths(1);
-                var value = orders.Where(order => order.OrderDate >= point.Month && order.OrderDate < next).Sum(order => order.TotalCost);
-                return new ChartPoint
-                {
-                    Label = point.Month.ToString("MMM yy", CultureInfo.CurrentCulture),
-                    Value = value,
-                    DisplayValue = value.ToString("C0", CultureInfo.CurrentCulture),
-                    Accent = point.Accent
-                };
-            })
-            .ToList();
-
-        ApplyPercents(points);
-        return points;
-    }
-
-    private IEnumerable<ChartPoint> BuildMonthlyProjectedRoi(IReadOnlyCollection<Order> orders)
-    {
-        var start = GetMonthlyChartStart();
-        var accents = new[] { "#39B7A5", "#5CC8FF", "#7C9BFF", "#B389FF", "#2F9E7E", "#FFB547" };
-        var points = Enumerable.Range(0, 12)
-            .Select(offset => new { Month = start.AddMonths(offset), Accent = accents[offset % accents.Length] })
-            .Select(point =>
-            {
-                var next = point.Month.AddMonths(1);
-                var value = orders
-                    .Where(order => order.OrderDate >= point.Month && order.OrderDate < next)
-                    .Sum(Settings.GetProjectedRoiAmount);
-
-                return new ChartPoint
-                {
-                    Label = point.Month.ToString("MMM yy", CultureInfo.CurrentCulture),
-                    Value = value,
-                    DisplayValue = value.ToString("C0", CultureInfo.CurrentCulture),
-                    Accent = point.Accent
-                };
-            })
-            .ToList();
-
-        ApplyPercents(points);
-        return points;
-    }
-
-    private static DateTime GetMonthlyChartStart()
-    {
-        return new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-11);
-    }
-
-    private IEnumerable<ChartPoint> BuildYearlySpend(IReadOnlyCollection<Order> orders)
-    {
-        var points = orders
-            .GroupBy(order => order.OrderDate.Year)
-            .OrderBy(group => group.Key)
-            .Select(group =>
-            {
-                var value = group.Sum(order => order.TotalCost);
-                return new ChartPoint
-                {
-                    Label = group.Key.ToString(CultureInfo.CurrentCulture),
-                    Value = value,
-                    DisplayValue = value.ToString("C0", CultureInfo.CurrentCulture),
-                    Accent = "#7C9BFF"
-                };
-            })
-            .DefaultIfEmpty(new ChartPoint { Label = DateTime.Today.Year.ToString(CultureInfo.CurrentCulture), DisplayValue = "No spend", Accent = "#6B7A90" })
-            .ToList();
-
-        ApplyPercents(points);
-        return points;
     }
 
     private IEnumerable<ChartPoint> BuildMerchantSpend(IReadOnlyCollection<Order> orders)
