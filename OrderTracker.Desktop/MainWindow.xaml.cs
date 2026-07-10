@@ -1005,8 +1005,8 @@ public partial class MainWindow : Window
         Resources["OrderRowMinHeight"] = compact ? 44d : 52d;
         Resources["PresetRowMinHeight"] = compact ? 40d : 48d;
         Resources["GridTextFontSize"] = compact ? 11.5d : 12.5d;
-        Resources["GridActionMinHeight"] = compact ? 26d : 30d;
-        Resources["GridActionFontSize"] = compact ? 11d : 12d;
+        Resources["GridActionMinHeight"] = compact ? 24d : 26d;
+        Resources["GridActionFontSize"] = compact ? 11d : 11.5d;
     }
 
     private void ApplyTheme(AppTheme theme)
