@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private bool _scrollRailBindingsInitialized;
     private bool _responsiveGridBindingsInitialized;
     private bool _isCommandRequeryQueued;
+    private WindowState _lastNonMinimizedWindowState = WindowState.Normal;
 
     public static readonly RoutedUICommand SelectHighlightedRowsCommand = new(
         "Select",
@@ -111,6 +112,7 @@ public partial class MainWindow : Window
         _viewModel.Settings.PropertyChanged += SettingsPropertyChanged;
         Loaded += MainWindowLoaded;
         SizeChanged += MainWindowSizeChanged;
+        StateChanged += MainWindowStateChanged;
         ApplyTheme(_viewModel.Settings.Theme);
         ApplyDensity(_viewModel.Settings.Density);
         ApplyWindowPlacement();
@@ -130,6 +132,7 @@ public partial class MainWindow : Window
         _viewModel.Settings.PropertyChanged -= SettingsPropertyChanged;
         Loaded -= MainWindowLoaded;
         SizeChanged -= MainWindowSizeChanged;
+        StateChanged -= MainWindowStateChanged;
         foreach (var binding in _responsiveGridBindings)
         {
             binding.Detach();
@@ -195,6 +198,14 @@ public partial class MainWindow : Window
     private void MainWindowSizeChanged(object sender, SizeChangedEventArgs e)
     {
         RefreshScrollRailThumbs();
+    }
+
+    private void MainWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState != WindowState.Minimized)
+        {
+            _lastNonMinimizedWindowState = WindowState;
+        }
     }
 
     private void InitializeScrollRailBindings()
@@ -1099,32 +1110,49 @@ public partial class MainWindow : Window
     {
         var settings = _viewModel.Settings;
         var hasStoredSize = IsUsableLength(settings.WindowWidth) && IsUsableLength(settings.WindowHeight);
+        var workAreas = GetMonitorWorkAreas();
+        var primaryWorkArea = SystemParameters.WorkArea;
+        var width = hasStoredSize ? Math.Max(MinWidth, settings.WindowWidth) : Width;
+        var height = hasStoredSize ? Math.Max(MinHeight, settings.WindowHeight) : Height;
 
-        if (hasStoredSize)
+        if (hasStoredSize && !primaryWorkArea.IsEmpty)
         {
-            Width = Math.Max(MinWidth, settings.WindowWidth);
-            Height = Math.Max(MinHeight, settings.WindowHeight);
+            Width = Math.Max(MinWidth, Math.Min(width, primaryWorkArea.Width));
+            Height = Math.Max(MinHeight, Math.Min(height, primaryWorkArea.Height));
         }
 
         if (settings.WindowLeft is { } left &&
             settings.WindowTop is { } top &&
-            IsVisiblePlacement(left, top, Width, Height))
+            IsFinite(left) &&
+            IsFinite(top))
         {
+            var desiredBounds = new Rect(left, top, width, height);
+            var targetWorkArea = SelectTargetWorkArea(desiredBounds, workAreas);
+            var restoredBounds = ClampToWorkArea(desiredBounds, targetWorkArea, MinWidth, MinHeight);
             WindowStartupLocation = WindowStartupLocation.Manual;
-            Left = left;
-            Top = top;
+            Width = restoredBounds.Width;
+            Height = restoredBounds.Height;
+            Left = restoredBounds.Left;
+            Top = restoredBounds.Top;
         }
 
         if (settings.IsWindowMaximized)
         {
+            _lastNonMinimizedWindowState = WindowState.Maximized;
             WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            _lastNonMinimizedWindowState = WindowState.Normal;
         }
     }
 
     private void StoreWindowPlacement()
     {
         var settings = _viewModel.Settings;
+        var intendedState = GetIntendedWindowState(WindowState, _lastNonMinimizedWindowState);
         var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+        settings.IsWindowMaximized = intendedState == WindowState.Maximized;
 
         if (!IsUsableLength(bounds.Width) || !IsUsableLength(bounds.Height))
         {
@@ -1135,23 +1163,130 @@ public partial class MainWindow : Window
         settings.WindowHeight = Math.Max(MinHeight, bounds.Height);
         settings.WindowLeft = IsFinite(bounds.Left) ? bounds.Left : null;
         settings.WindowTop = IsFinite(bounds.Top) ? bounds.Top : null;
-        settings.IsWindowMaximized = WindowState == WindowState.Maximized;
     }
 
-    private static bool IsVisiblePlacement(double left, double top, double width, double height)
+    private static WindowState GetIntendedWindowState(WindowState currentState, WindowState lastNonMinimizedState)
     {
-        var right = left + width;
-        var bottom = top + height;
-        var screenLeft = SystemParameters.VirtualScreenLeft;
-        var screenTop = SystemParameters.VirtualScreenTop;
-        var screenRight = screenLeft + SystemParameters.VirtualScreenWidth;
-        var screenBottom = screenTop + SystemParameters.VirtualScreenHeight;
-
-        return left < screenRight - 80 &&
-               top < screenBottom - 80 &&
-               right > screenLeft + 80 &&
-               bottom > screenTop + 80;
+        return currentState == WindowState.Minimized ? lastNonMinimizedState : currentState;
     }
+
+    private static Rect ClampToWorkArea(Rect bounds, Rect workArea, double minWidth, double minHeight)
+    {
+        var width = Math.Max(minWidth, Math.Min(bounds.Width, workArea.Width));
+        var height = Math.Max(minHeight, Math.Min(bounds.Height, workArea.Height));
+        var left = width <= workArea.Width
+            ? Math.Clamp(bounds.Left, workArea.Left, workArea.Right - width)
+            : workArea.Left;
+        var top = height <= workArea.Height
+            ? Math.Clamp(bounds.Top, workArea.Top, workArea.Bottom - height)
+            : workArea.Top;
+        return new Rect(left, top, width, height);
+    }
+
+    private static Rect SelectTargetWorkArea(Rect bounds, IReadOnlyList<Rect> workAreas)
+    {
+        if (workAreas.Count == 0)
+        {
+            return SystemParameters.WorkArea;
+        }
+
+        return workAreas
+            .OrderByDescending(workArea => GetIntersectionArea(bounds, workArea))
+            .ThenBy(workArea => GetDistanceSquared(bounds, workArea))
+            .First();
+    }
+
+    private static double GetIntersectionArea(Rect first, Rect second)
+    {
+        var width = Math.Max(0d, Math.Min(first.Right, second.Right) - Math.Max(first.Left, second.Left));
+        var height = Math.Max(0d, Math.Min(first.Bottom, second.Bottom) - Math.Max(first.Top, second.Top));
+        return width * height;
+    }
+
+    private static double GetDistanceSquared(Rect bounds, Rect workArea)
+    {
+        var centerX = bounds.Left + bounds.Width / 2d;
+        var centerY = bounds.Top + bounds.Height / 2d;
+        var nearestX = Math.Clamp(centerX, workArea.Left, workArea.Right);
+        var nearestY = Math.Clamp(centerY, workArea.Top, workArea.Bottom);
+        var deltaX = centerX - nearestX;
+        var deltaY = centerY - nearestY;
+        return deltaX * deltaX + deltaY * deltaY;
+    }
+
+    private static IReadOnlyList<Rect> GetMonitorWorkAreas()
+    {
+        var workAreas = new List<Rect>();
+        var scale = GetSystemDpiScale();
+        MonitorEnumProc callback = (monitor, _, _, _) =>
+        {
+            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            if (GetMonitorInfo(monitor, ref info))
+            {
+                workAreas.Add(new Rect(
+                    info.WorkArea.Left / scale,
+                    info.WorkArea.Top / scale,
+                    (info.WorkArea.Right - info.WorkArea.Left) / scale,
+                    (info.WorkArea.Bottom - info.WorkArea.Top) / scale));
+            }
+
+            return true;
+        };
+
+        if (!EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero) || workAreas.Count == 0)
+        {
+            workAreas.Add(SystemParameters.WorkArea);
+        }
+
+        return workAreas;
+    }
+
+    private static double GetSystemDpiScale()
+    {
+        try
+        {
+            return Math.Max(1d, GetDpiForSystem() / 96d);
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return 1d;
+        }
+    }
+
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr deviceContext, IntPtr monitorRect, IntPtr data);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect MonitorArea;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(
+        IntPtr deviceContext,
+        IntPtr clipRect,
+        MonitorEnumProc callback,
+        IntPtr data);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForSystem();
 
     private static bool IsUsableLength(double value)
     {

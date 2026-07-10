@@ -490,6 +490,11 @@ public sealed class Order : ObservableObject
     [JsonIgnore]
     public DateTime ExpectedSortDate => ExpectedDate ?? DateTime.MaxValue;
 
+    public void RefreshDateDependentProperties()
+    {
+        OnPropertyChanged(nameof(IsOverdue));
+    }
+
     private void OnCostChanged()
     {
         OnPropertyChanged(nameof(Subtotal));

@@ -19,6 +19,14 @@ namespace OrderTracker.Desktop.ViewModels;
 
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
+    [Flags]
+    private enum PresetRefreshScope
+    {
+        None = 0,
+        Accounts = 1,
+        Items = 2
+    }
+
     private static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan SidebarClockDisplayOffset = TimeSpan.FromSeconds(1);
 
@@ -29,6 +37,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly MerchantFaviconService _merchantFaviconService = new();
     private readonly HashSet<MerchantKind> _pendingMerchantFaviconFetches = new();
     private readonly HashSet<ItemPreset> _pendingAppliedItemPresets = new();
+    private readonly Dictionary<Order, ObservableCollection<TrackingEntry>> _subscribedTrackingCollections = new();
     private readonly AppData _data;
     private readonly DispatcherTimer _autosaveTimer = new();
     private readonly DispatcherTimer _sidebarClockTimer = new();
@@ -63,6 +72,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _suppressOrderChangeNotifications;
     private bool _suppressPresetChangeNotifications;
     private bool _suppressBulkSelectionNotifications;
+    private bool _isFlushingPresetRefreshes;
+    private PresetRefreshScope _pendingPresetRefreshes;
     private bool _isDisposed;
     private int _merchantIconCacheVersion;
     private bool _isFetchingMerchantFavicons;
@@ -153,8 +164,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Orders.CollectionChanged += OrdersCollectionChanged;
         foreach (var order in Orders)
         {
-            order.PropertyChanged += OrderPropertyChanged;
-            order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
+            SubscribeToOrder(order);
         }
 
         AccountPresets.CollectionChanged += AccountPresetsCollectionChanged;
@@ -362,8 +372,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get
         {
             var activeMerchants = Orders.Select(order => order.Merchant)
-                .Concat(AccountPresets.Select(preset => preset.MerchantHint))
-                .Concat(ItemPresets.Select(preset => preset.MerchantHint))
                 .Where(merchant => merchant != MerchantKind.Unknown)
                 .ToHashSet();
             return Settings.MerchantProjectedRoiPercents.Where(setting => activeMerchants.Contains(setting.Merchant));
@@ -616,6 +624,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 ((RelayCommand)ClearOrderAttentionFilterCommand).RaiseCanExecuteChanged();
                 RefreshItemExpansionToggleState();
                 OnPropertyChanged(nameof(AreAllVisibleOrdersSelected));
+                OnPropertyChanged(nameof(ShowOrderGroupHeaders));
             }
         }
     }
@@ -707,6 +716,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OrdersView.Refresh();
                 RefreshItemExpansionToggleState();
                 OnPropertyChanged(nameof(AreAllVisibleOrdersSelected));
+                OnPropertyChanged(nameof(ShowOrderGroupHeaders));
             }
         }
     }
@@ -1096,6 +1106,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _presetSearchText, value ?? string.Empty))
             {
                 PresetsView.Refresh();
+                OnPropertyChanged(nameof(ShowItemGroupHeaders));
+                OnPropertyChanged(nameof(AreAllVisiblePresetsSelected));
             }
         }
     }
@@ -1246,6 +1258,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _accountPresetSearchText, value ?? string.Empty))
             {
                 AccountPresetsView.Refresh();
+                OnPropertyChanged(nameof(ShowAccountGroupHeaders));
+                OnPropertyChanged(nameof(AreAllVisibleAccountPresetsSelected));
             }
         }
     }
@@ -1846,22 +1860,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         order.TrackingStatus = FormTrackingStatus.Trim();
         order.Notes = FormNotes.Trim();
 
-        order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
-        try
+        order.TrackingNumbers.Clear();
+        foreach (var trackingNumber in ParseTrackingNumbers(FormTrackingNumbersText))
         {
-            order.TrackingNumbers.Clear();
-            foreach (var trackingNumber in ParseTrackingNumbers(FormTrackingNumbersText))
+            order.TrackingNumbers.Add(new TrackingEntry
             {
-                order.TrackingNumbers.Add(new TrackingEntry
-                {
-                    Number = trackingNumber,
-                    Status = FormTrackingStatus.Trim()
-                });
-            }
-        }
-        finally
-        {
-            order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
+                Number = trackingNumber,
+                Status = FormTrackingStatus.Trim()
+            });
         }
     }
 
@@ -1956,8 +1962,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void RemoveOrder(Order order)
     {
-        order.PropertyChanged -= OrderPropertyChanged;
-        order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
         Orders.Remove(order);
         if (SelectedOrder == order)
         {
@@ -2579,6 +2583,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _suppressPresetChangeNotifications = previousSuppression;
         }
+
+        if (!previousSuppression && !_isFlushingPresetRefreshes)
+        {
+            FlushPendingPresetRefreshes();
+        }
     }
 
     private void RunWithBulkSelectionNotificationsSuppressed(Action action)
@@ -3094,14 +3103,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 preset.UsageCount++;
             }
         });
-
-        if (SelectedItemSort is ItemSortOption.MostUsed or ItemSortOption.LeastUsed ||
-            SelectedItemGroup == ItemGroupOption.Usage)
-        {
-            PresetsView.Refresh();
-        }
-
-        OrderItemPresetsView.Refresh();
     }
 
     private void BeginNewAccountPreset()
@@ -3194,9 +3195,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         });
 
         SelectedAccountPreset = preset;
-        RefreshAccountUsageCounts();
-        AccountPresetsView.Refresh();
-        RefreshOrderAccountPresets();
         RaiseAccountActionCommandState();
         SaveNow($"Account preset {(isNew ? "added" : "updated")}.");
         CloseAccountPresetEditor();
@@ -3228,10 +3226,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     CloseAccountPresetEditor();
                 }
 
-                RefreshAccountUsageCounts();
-                AccountPresetsView.Refresh();
-                RefreshOrderAccountPresets();
-                RefreshBulkSelectionState();
                 SaveNow($"Deleted {label}.");
             },
             isDanger: true,
@@ -3256,10 +3250,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
 
         RunWithPresetChangeNotificationsSuppressed(() => AccountPresets.Add(copy));
-        RefreshAccountUsageCounts();
         SelectedAccountPreset = copy;
-        AccountPresetsView.Refresh();
-        RefreshOrderAccountPresets();
         SaveNow("Account preset duplicated.");
         BeginEditAccountPreset(copy);
     }
@@ -3331,10 +3322,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     }
                 }
 
-                RefreshAccountUsageCounts();
-                AccountPresetsView.Refresh();
-                RefreshOrderAccountPresets();
-                RefreshBulkSelectionState();
                 SaveNow($"Deleted {candidates.Count} selected {noun}.");
             },
             isDanger: true,
@@ -3440,7 +3427,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         });
 
         SelectedPreset = preset;
-        PresetsView.Refresh();
         SaveNow($"Item {(isNew ? "added" : "updated")}.");
         ClosePresetEditor();
     }
@@ -3488,10 +3474,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     ClosePresetEditor();
                 }
 
-                PresetsView.Refresh();
-                OnPropertyChanged(nameof(ShowItemGroupHeaders));
-                OnPropertyChanged(nameof(AreAllVisiblePresetsSelected));
-                RefreshBulkSelectionState();
                 SaveNow($"Deleted {label}.");
             },
             isDanger: true,
@@ -3520,7 +3502,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         RunWithPresetChangeNotificationsSuppressed(() => ItemPresets.Add(copy));
         SelectedPreset = copy;
-        PresetsView.Refresh();
         SaveNow("Item duplicated.");
         BeginEditPreset(copy);
     }
@@ -3592,8 +3573,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     }
                 }
 
-                PresetsView.Refresh();
-                RefreshBulkSelectionState();
                 SaveNow($"Deleted {candidates.Count} selected {noun}.");
             },
             isDanger: true,
@@ -3764,14 +3743,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 }
             }
         });
-
-        if (changed)
-        {
-                AccountPresetsView.Refresh();
-                OnPropertyChanged(nameof(ShowAccountGroupHeaders));
-                OnPropertyChanged(nameof(AreAllVisibleAccountPresetsSelected));
-            RefreshOrderAccountPresets();
-        }
 
         RefreshAccountUsageAuditOrders();
         return changed;
@@ -4152,8 +4123,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void RefreshDashboard()
     {
         var orders = Orders.ToList();
-        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
-        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
+        RefreshMerchantRoiSettingsState();
 
         MetricCards.Clear();
         foreach (var card in BuildMetricCards(orders))
@@ -4165,6 +4135,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ReplaceChart(MerchantSpend, BuildMerchantSpend(orders));
         ReplaceChart(StatusBreakdown, BuildStatusBreakdown(orders));
         RefreshSidebarAlerts(orders);
+    }
+
+    private void RefreshMerchantRoiSettingsState()
+    {
+        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
+        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
     }
 
     private void RefreshSidebarAlerts()
@@ -4622,8 +4598,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (_sidebarDateTime.Date != previousDate)
         {
-            RefreshSidebarAlerts();
+            RefreshForLocalDateChange();
         }
+    }
+
+    private void RefreshForLocalDateChange()
+    {
+        RunWithOrderChangeNotificationsSuppressed(() =>
+        {
+            foreach (var order in Orders)
+            {
+                order.RefreshDateDependentProperties();
+            }
+        });
+
+        RefreshOrderViews();
+        RefreshDashboard();
+        RefreshArchiveState();
     }
 
     private DateTime GetSidebarDateTime()
@@ -4900,14 +4891,104 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PersistIfNeeded();
     }
 
+    private void SubscribeToOrder(Order order)
+    {
+        order.PropertyChanged -= OrderPropertyChanged;
+        order.PropertyChanged += OrderPropertyChanged;
+        AttachTrackingCollection(order);
+    }
+
+    private void AttachTrackingCollection(Order order)
+    {
+        if (_subscribedTrackingCollections.TryGetValue(order, out var previousCollection) &&
+            !ReferenceEquals(previousCollection, order.TrackingNumbers))
+        {
+            previousCollection.CollectionChanged -= TrackingNumbersCollectionChanged;
+        }
+
+        order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
+        order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
+        _subscribedTrackingCollections[order] = order.TrackingNumbers;
+    }
+
+    private void UnsubscribeFromOrder(Order order)
+    {
+        order.PropertyChanged -= OrderPropertyChanged;
+        if (_subscribedTrackingCollections.Remove(order, out var trackingNumbers))
+        {
+            trackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
+        }
+    }
+
+    private void QueuePresetRefresh(PresetRefreshScope scope)
+    {
+        _pendingPresetRefreshes |= scope;
+        if (!_suppressPresetChangeNotifications && !_isFlushingPresetRefreshes)
+        {
+            FlushPendingPresetRefreshes();
+        }
+    }
+
+    private void FlushPendingPresetRefreshes()
+    {
+        if (_pendingPresetRefreshes == PresetRefreshScope.None || _isFlushingPresetRefreshes)
+        {
+            return;
+        }
+
+        _isFlushingPresetRefreshes = true;
+        try
+        {
+            var scope = _pendingPresetRefreshes;
+            _pendingPresetRefreshes = PresetRefreshScope.None;
+
+            if (scope.HasFlag(PresetRefreshScope.Accounts))
+            {
+                RefreshAccountUsageCounts();
+                scope |= _pendingPresetRefreshes;
+                _pendingPresetRefreshes = PresetRefreshScope.None;
+            }
+
+            if (scope.HasFlag(PresetRefreshScope.Accounts))
+            {
+                AccountPresetsView.Refresh();
+                RefreshOrderAccountPresets();
+                OnPropertyChanged(nameof(AccountPresetCount));
+                OnPropertyChanged(nameof(AccountsNavLabel));
+                OnPropertyChanged(nameof(ShowAccountGroupHeaders));
+                RaiseAccountActionCommandState();
+            }
+
+            if (scope.HasFlag(PresetRefreshScope.Items))
+            {
+                PresetsView.Refresh();
+                OrderItemPresetsView.Refresh();
+                OnPropertyChanged(nameof(ItemPresetCount));
+                OnPropertyChanged(nameof(ItemsNavLabel));
+                OnPropertyChanged(nameof(ShowItemGroupHeaders));
+            }
+
+            RefreshPresetBulkSelectionState(scope);
+            RefreshMerchantRoiSettingsState();
+        }
+        finally
+        {
+            _isFlushingPresetRefreshes = false;
+        }
+
+        if (_pendingPresetRefreshes != PresetRefreshScope.None)
+        {
+            FlushPendingPresetRefreshes();
+        }
+    }
+
     private void OrdersCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.OldItems is not null)
         {
             foreach (Order order in e.OldItems)
             {
-                order.PropertyChanged -= OrderPropertyChanged;
-                order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
+                UnsubscribeFromOrder(order);
             }
         }
 
@@ -4915,11 +4996,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             foreach (Order order in e.NewItems)
             {
-                order.PropertyChanged += OrderPropertyChanged;
-                order.TrackingNumbers.CollectionChanged += TrackingNumbersCollectionChanged;
+                SubscribeToOrder(order);
             }
 
             QueueMerchantFaviconFetch(e.NewItems.OfType<Order>().Select(order => order.Merchant));
+        }
+
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            foreach (var removedOrder in _subscribedTrackingCollections.Keys.Except(Orders).ToList())
+            {
+                UnsubscribeFromOrder(removedOrder);
+            }
+
+            foreach (var order in Orders)
+            {
+                SubscribeToOrder(order);
+            }
         }
 
         if (_suppressOrderChangeNotifications)
@@ -4956,16 +5049,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (_suppressPresetChangeNotifications)
         {
+            _pendingPresetRefreshes |= PresetRefreshScope.Accounts;
             return;
         }
 
-        RefreshAccountUsageCounts();
-        RefreshBulkSelectionState();
-        RefreshOrderAccountPresets();
-        OnPropertyChanged(nameof(AccountPresetCount));
-        OnPropertyChanged(nameof(AccountsNavLabel));
-        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
-        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
+        QueuePresetRefresh(PresetRefreshScope.Accounts);
     }
 
     private void ItemPresetsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -4988,15 +5076,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (_suppressPresetChangeNotifications)
         {
+            _pendingPresetRefreshes |= PresetRefreshScope.Items;
             return;
         }
 
-        RefreshBulkSelectionState();
-        OrderItemPresetsView.Refresh();
-        OnPropertyChanged(nameof(ItemPresetCount));
-        OnPropertyChanged(nameof(ItemsNavLabel));
-        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
-        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
+        QueuePresetRefresh(PresetRefreshScope.Items);
     }
 
     private void AccountPresetPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -5013,6 +5097,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (_suppressPresetChangeNotifications)
         {
+            _pendingPresetRefreshes |= PresetRefreshScope.Accounts;
             return;
         }
 
@@ -5029,8 +5114,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             RaiseAccountActionCommandState();
         }
 
-        AccountPresetsView.Refresh();
-        RefreshOrderAccountPresets();
+        QueuePresetRefresh(PresetRefreshScope.Accounts);
         PersistIfNeeded();
     }
 
@@ -5048,6 +5132,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (_suppressPresetChangeNotifications)
         {
+            _pendingPresetRefreshes |= PresetRefreshScope.Items;
             return;
         }
 
@@ -5059,13 +5144,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             PresetIsFavorite = itemPreset.IsFavorite;
         }
 
-        PresetsView.Refresh();
-        OrderItemPresetsView.Refresh();
+        QueuePresetRefresh(PresetRefreshScope.Items);
         PersistIfNeeded();
     }
 
     private void OrderPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (sender is Order orderWithTrackingCollection && e.PropertyName == nameof(Order.TrackingNumbers))
+        {
+            AttachTrackingCollection(orderWithTrackingCollection);
+        }
+
+        if (e.PropertyName is nameof(Order.TrackingCount)
+            or nameof(Order.HasTrackingNumbers)
+            or nameof(Order.HasMultipleTrackingNumbers)
+            or nameof(Order.TrackingCountSummary)
+            or nameof(Order.PrimaryTracking))
+        {
+            return;
+        }
+
         if (e.PropertyName == nameof(Order.IsItemsExpanded))
         {
             RefreshItemExpansionToggleState();
@@ -5264,6 +5362,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RefreshSidebarAlerts();
     }
 
+    private void RefreshPresetBulkSelectionState(PresetRefreshScope scope)
+    {
+        if (scope.HasFlag(PresetRefreshScope.Accounts))
+        {
+            OnPropertyChanged(nameof(SelectedAccountPresetCount));
+            OnPropertyChanged(nameof(HasSelectedAccountPresets));
+            OnPropertyChanged(nameof(AreAllVisibleAccountPresetsSelected));
+            OnPropertyChanged(nameof(AccountPresetBulkSelectionSummary));
+            ((RelayCommand)ClearSelectedAccountPresetsCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)DeleteSelectedAccountPresetsCommand).RaiseCanExecuteChanged();
+        }
+
+        if (scope.HasFlag(PresetRefreshScope.Items))
+        {
+            OnPropertyChanged(nameof(SelectedPresetCount));
+            OnPropertyChanged(nameof(HasSelectedPresets));
+            OnPropertyChanged(nameof(AreAllVisiblePresetsSelected));
+            OnPropertyChanged(nameof(PresetBulkSelectionSummary));
+            ((RelayCommand)ClearSelectedPresetsCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)DeleteSelectedPresetsCommand).RaiseCanExecuteChanged();
+        }
+    }
+
     private void RefreshLegacyOrderItemMigrationState()
     {
         OnPropertyChanged(nameof(LegacyOrderItemMigrationCount));
@@ -5311,10 +5432,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         Orders.CollectionChanged -= OrdersCollectionChanged;
-        foreach (var order in Orders)
+        foreach (var order in _subscribedTrackingCollections.Keys.ToList())
         {
-            order.PropertyChanged -= OrderPropertyChanged;
-            order.TrackingNumbers.CollectionChanged -= TrackingNumbersCollectionChanged;
+            UnsubscribeFromOrder(order);
         }
 
         AccountPresets.CollectionChanged -= AccountPresetsCollectionChanged;
