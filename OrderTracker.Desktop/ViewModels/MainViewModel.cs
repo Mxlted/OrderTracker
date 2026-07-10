@@ -4679,7 +4679,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private static string FormatSelectedCount(int count, string singularName)
     {
         return count == 0
-            ? $"No {singularName}s selected."
+            ? $"0 {singularName}s selected."
             : count == 1
                 ? $"1 {singularName} selected."
                 : $"{count} {singularName}s selected.";

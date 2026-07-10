@@ -2339,8 +2339,7 @@
                             <WrapPanel Grid.Row="1"
                                        Grid.ColumnSpan="5"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding HasSelectedActiveOrders, Converter={StaticResource BoolToVisibility}}">
+                                       VerticalAlignment="Center">
                                 <TextBlock Text="{Binding ActiveOrderBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
@@ -2372,7 +2371,7 @@
                                   ItemsSource="{Binding OrdersView}"
                                   SelectedItem="{Binding SelectedOrder}"
                                   RowStyle="{StaticResource OrderRowStyle}"
-                                  SelectionChanged="SelectableGridSelectionChanged"
+                                  SelectionChanged="HighlightGridSelectionChanged"
                                   AlternationCount="2"
                                   RowDetailsVisibilityMode="Visible"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -3180,8 +3179,7 @@
                                      ToolTip="Search archived orders"/>
                             <WrapPanel Grid.Row="1"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding HasSelectedArchivedOrders, Converter={StaticResource BoolToVisibility}}">
+                                       VerticalAlignment="Center">
                                 <TextBlock Text="{Binding ArchivedOrderBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
@@ -3209,7 +3207,7 @@
                                   ItemsSource="{Binding ArchivedOrdersView}"
                                   SelectedItem="{Binding SelectedOrder}"
                                   RowStyle="{StaticResource ArchiveOrderRowStyle}"
-                                  SelectionChanged="SelectableGridSelectionChanged"
+                                  SelectionChanged="HighlightGridSelectionChanged"
                                   AlternationCount="2"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   ScrollViewer.VerticalScrollBarVisibility="Hidden"
@@ -3581,8 +3579,7 @@
                             <WrapPanel Grid.Row="1"
                                        Grid.ColumnSpan="3"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding HasSelectedAccountPresets, Converter={StaticResource BoolToVisibility}}">
+                                       VerticalAlignment="Center">
                                 <TextBlock Text="{Binding AccountPresetBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
@@ -3613,7 +3610,7 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Hidden"
                                       ScrollViewer.CanContentScroll="False"
                                       ColumnWidth="*"
-                                      SelectionChanged="SelectableGridSelectionChanged">
+                                      SelectionChanged="HighlightGridSelectionChanged">
                                 <DataGrid.GroupStyle>
                                     <GroupStyle>
                                         <GroupStyle.ContainerStyle>
@@ -3992,8 +3989,7 @@
                             <WrapPanel Grid.Row="1"
                                        Grid.ColumnSpan="3"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding HasSelectedPresets, Converter={StaticResource BoolToVisibility}}">
+                                       VerticalAlignment="Center">
                                 <TextBlock Text="{Binding PresetBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
@@ -4024,7 +4020,7 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Hidden"
                                       ScrollViewer.CanContentScroll="False"
                                       ColumnWidth="*"
-                                      SelectionChanged="SelectableGridSelectionChanged">
+                                      SelectionChanged="HighlightGridSelectionChanged">
                                 <DataGrid.GroupStyle>
                                     <GroupStyle>
                                         <GroupStyle.ContainerStyle>

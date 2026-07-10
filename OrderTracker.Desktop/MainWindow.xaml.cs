@@ -278,10 +278,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SelectableGridSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void HighlightGridSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _viewModel.SetBulkSelection(e.RemovedItems.Cast<object>(), false);
-        _viewModel.SetBulkSelection(e.AddedItems.Cast<object>(), true);
         QueueCommandRequery();
     }
 
