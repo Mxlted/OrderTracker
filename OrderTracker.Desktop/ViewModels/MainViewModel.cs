@@ -45,7 +45,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private AccountGroupOption _selectedAccountGroup = AccountGroupOption.None;
     private AccountSortOption _selectedAccountSort = AccountSortOption.NameAscending;
     private ItemGroupOption _selectedItemGroup = ItemGroupOption.None;
-    private ItemSortOption _selectedItemSort = ItemSortOption.NameAscending;
+    private ItemSortOption _selectedItemSort = ItemSortOption.MostUsed;
+    private OrderAttentionFilter _selectedAttentionFilter = OrderAttentionFilter.All;
     private bool _hideCompleted;
     private string? _editingOrderId;
     private bool _isOrderEditorOpen;
@@ -74,6 +75,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string? _pendingConfirmationCancelMessage;
     private bool _isAccountUsageAuditOpen;
     private AccountPreset? _accountUsageAuditPreset;
+    private bool _isOrderAdvancedOpen;
+    private bool _isAccountAdvancedOpen;
+    private bool _isPresetAdvancedOpen;
+    private bool _isDiscordWebhookRevealed;
+    private string _settingsSaveStatus = "All changes saved.";
 
     private string _formAccountEmail = string.Empty;
     private MerchantKind _formMerchant = MerchantKind.Unknown;
@@ -138,6 +144,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OrderAccountPresetsView.Filter = FilterOrderAccountPreset;
         PresetsView = CollectionViewSource.GetDefaultView(ItemPresets);
         PresetsView.Filter = FilterPreset;
+        OrderItemPresetsView = new ListCollectionView(ItemPresets);
+        OrderItemPresetsView.SortDescriptions.Add(new SortDescription(nameof(ItemPreset.UsageCount), ListSortDirection.Descending));
+        OrderItemPresetsView.SortDescriptions.Add(new SortDescription(nameof(ItemPreset.Name), ListSortDirection.Ascending));
+        OrderItemPresetsView.Filter = FilterOrderItemPreset;
 
         Orders.CollectionChanged += OrdersCollectionChanged;
         foreach (var order in Orders)
@@ -167,6 +177,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         NavigateCommand = new RelayCommand(parameter => Navigate(parameter?.ToString()));
+        ToggleSidebarCommand = new RelayCommand(_ => Settings.IsSidebarCollapsed = !Settings.IsSidebarCollapsed);
         NewOrderCommand = new RelayCommand(_ => BeginNewOrder());
         ToggleQuickOrderCommand = new RelayCommand(_ => ToggleQuickOrder());
         EditOrderCommand = new RelayCommand(parameter => BeginEditOrder(parameter as Order), parameter => parameter is Order);
@@ -175,6 +186,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteOrderCommand = new RelayCommand(parameter => DeleteOrder(parameter as Order), parameter => parameter is Order);
         DuplicateOrderCommand = new RelayCommand(parameter => DuplicateOrder(parameter as Order), parameter => parameter is Order);
         ToggleCompletedCommand = new RelayCommand(parameter => ToggleCompleted(parameter as Order), parameter => parameter is Order);
+        PrimaryOrderActionCommand = new RelayCommand(parameter => RunPrimaryOrderAction(parameter as Order), parameter => parameter is Order { IsArchived: false });
         ArchiveCompletedOrdersCommand = new RelayCommand(_ => ArchiveCompletedOrders(), _ => CompletedOrdersReadyToArchiveCount > 0);
         RestoreOrderCommand = new RelayCommand(parameter => RestoreOrder(parameter as Order), parameter => parameter is Order { IsArchived: true });
         SelectVisibleOrdersCommand = new RelayCommand(_ => SelectOrders(OrdersView, true));
@@ -193,7 +205,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CopyTextCommand = new RelayCommand(CopyText, HasTextToCopy);
         AddOrderItemCommand = new RelayCommand(_ => AddFormItem());
         RemoveOrderItemCommand = new RelayCommand(parameter => RemoveFormItem(parameter as OrderItem), parameter => parameter is OrderItem && FormItems.Count > 1);
+        ApplyOrderAttentionFilterCommand = new RelayCommand(ApplyOrderAttentionFilter);
+        ClearOrderAttentionFilterCommand = new RelayCommand(_ => SelectedAttentionFilter = OrderAttentionFilter.All, _ => HasAttentionFilter);
         SaveSettingsCommand = new RelayCommand(_ => SaveNow("Settings saved."));
+        ToggleDiscordWebhookRevealCommand = new RelayCommand(_ => IsDiscordWebhookRevealed = !IsDiscordWebhookRevealed);
+        ClearDiscordWebhookCommand = new RelayCommand(_ => ClearDiscordWebhook(), _ => !string.IsNullOrWhiteSpace(Settings.DiscordWebhookUrl));
         ClearMerchantIconCacheCommand = new RelayCommand(_ => ClearMerchantIconCache());
         MigrateLegacyOrderItemsCommand = new RelayCommand(_ => MigrateLegacyOrderItems(), _ => LegacyOrderItemMigrationCount > 0);
         SendDiscordStatsCommand = new RelayCommand(async _ => await SendDiscordStatsAsync(), _ => !IsBusy);
@@ -228,6 +244,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectVisiblePresetsCommand = new RelayCommand(_ => SelectItemPresets(PresetsView, true));
         ClearSelectedPresetsCommand = new RelayCommand(_ => ClearItemPresetSelection(), _ => SelectedPresetCount > 0);
         DeleteSelectedPresetsCommand = new RelayCommand(_ => DeleteSelectedPresets(), _ => SelectedPresetCount > 0);
+        SaveCurrentCommand = new RelayCommand(_ => SaveCurrent(), _ => CanSaveCurrent);
+        CloseCurrentPanelCommand = new RelayCommand(_ => CloseCurrentPanel(), _ => CanCloseCurrentPanel);
 
         FormItems.CollectionChanged += FormItemsCollectionChanged;
         StartAutosaveTimer();
@@ -273,6 +291,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICollectionView PresetsView { get; }
 
+    public ICollectionView OrderItemPresetsView { get; }
+
     public ObservableCollection<MetricCard> MetricCards { get; } = new();
 
     public ObservableCollection<ChartPoint> MonthlySpend { get; } = new();
@@ -284,6 +304,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<ChartPoint> MerchantSpend { get; } = new();
 
     public ObservableCollection<ChartPoint> StatusBreakdown { get; } = new();
+
+    public ObservableCollection<MonthlyComparisonPoint> MonthlyComparison { get; } = new();
 
     public ObservableCollection<SidebarPanelItem> SidebarAlerts { get; } = new();
 
@@ -324,7 +346,37 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public Array Themes => Enum.GetValues<AppTheme>();
 
+    public Array Densities => Enum.GetValues<UiDensity>();
+
+    public Array AttentionFilterOptions => Enum.GetValues<OrderAttentionFilter>();
+
+    public IReadOnlyList<int> DashboardMonthRangeOptions { get; } = [3, 6, 12];
+
+    public IEnumerable<MerchantRoiSetting> ActiveMerchantRoiSettings
+    {
+        get
+        {
+            var activeMerchants = Orders.Select(order => order.Merchant)
+                .Concat(AccountPresets.Select(preset => preset.MerchantHint))
+                .Concat(ItemPresets.Select(preset => preset.MerchantHint))
+                .Where(merchant => merchant != MerchantKind.Unknown)
+                .ToHashSet();
+            return Settings.MerchantProjectedRoiPercents.Where(setting => activeMerchants.Contains(setting.Merchant));
+        }
+    }
+
+    public IEnumerable<MerchantRoiSetting> InactiveMerchantRoiSettings
+    {
+        get
+        {
+            var active = ActiveMerchantRoiSettings.Select(setting => setting.Merchant).ToHashSet();
+            return Settings.MerchantProjectedRoiPercents.Where(setting => !active.Contains(setting.Merchant));
+        }
+    }
+
     public ICommand NavigateCommand { get; }
+
+    public ICommand ToggleSidebarCommand { get; }
 
     public ICommand NewOrderCommand { get; }
 
@@ -341,6 +393,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand DuplicateOrderCommand { get; }
 
     public ICommand ToggleCompletedCommand { get; }
+
+    public ICommand PrimaryOrderActionCommand { get; }
 
     public ICommand ArchiveCompletedOrdersCommand { get; }
 
@@ -378,7 +432,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICommand RemoveOrderItemCommand { get; }
 
+    public ICommand ApplyOrderAttentionFilterCommand { get; }
+
+    public ICommand ClearOrderAttentionFilterCommand { get; }
+
     public ICommand SaveSettingsCommand { get; }
+
+    public ICommand ToggleDiscordWebhookRevealCommand { get; }
+
+    public ICommand ClearDiscordWebhookCommand { get; }
 
     public ICommand ClearMerchantIconCacheCommand { get; }
 
@@ -444,10 +506,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICommand DeleteSelectedPresetsCommand { get; }
 
+    public ICommand SaveCurrentCommand { get; }
+
+    public ICommand CloseCurrentPanelCommand { get; }
+
     public AppPage SelectedPage
     {
         get => _selectedPage;
-        set => SetProperty(ref _selectedPage, value);
+        set
+        {
+            if (SetProperty(ref _selectedPage, value))
+            {
+                RefreshCurrentCommandState();
+            }
+        }
     }
 
     public Order? SelectedOrder
@@ -466,6 +538,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string SidebarTime => _sidebarDateTime.ToString("h:mm:ss tt", CultureInfo.CurrentCulture);
 
+    public int ActiveOrderCount => Orders.Count(order => !order.IsArchived);
+
+    public int AccountPresetCount => AccountPresets.Count;
+
+    public int ItemPresetCount => ItemPresets.Count;
+
+    public string OrdersNavLabel => $"Orders  {ActiveOrderCount}";
+
+    public string ArchiveNavLabel => $"Archive  {ArchivedOrderCount}";
+
+    public string AccountsNavLabel => $"Accounts  {AccountPresetCount}";
+
+    public string ItemsNavLabel => $"Items  {ItemPresetCount}";
+
+    public double SidebarWidth => Settings.IsSidebarCollapsed ? 72d : 236d;
+
+    public bool IsSidebarExpanded => !Settings.IsSidebarCollapsed;
+
     public string SearchText
     {
         get => _searchText;
@@ -475,6 +565,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 OrdersView.Refresh();
                 RefreshItemExpansionToggleState();
+                OnPropertyChanged(nameof(AreAllVisibleOrdersSelected));
+                OnPropertyChanged(nameof(ShowOrderGroupHeaders));
             }
         }
     }
@@ -487,6 +579,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _archiveSearchText, value ?? string.Empty))
             {
                 ArchivedOrdersView.Refresh();
+                OnPropertyChanged(nameof(AreAllVisibleArchivedOrdersSelected));
             }
         }
     }
@@ -500,9 +593,37 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Settings.OrderGroup = value;
                 ApplySortAndGroup();
+                OnPropertyChanged(nameof(ShowOrderMerchantColumn));
             }
         }
     }
+
+    public OrderAttentionFilter SelectedAttentionFilter
+    {
+        get => _selectedAttentionFilter;
+        set
+        {
+            if (SetProperty(ref _selectedAttentionFilter, value))
+            {
+                OrdersView.Refresh();
+                OnPropertyChanged(nameof(HasAttentionFilter));
+                OnPropertyChanged(nameof(AttentionFilterSummary));
+                ((RelayCommand)ClearOrderAttentionFilterCommand).RaiseCanExecuteChanged();
+                RefreshItemExpansionToggleState();
+                OnPropertyChanged(nameof(AreAllVisibleOrdersSelected));
+            }
+        }
+    }
+
+    public bool HasAttentionFilter => SelectedAttentionFilter != OrderAttentionFilter.All;
+
+    public string AttentionFilterSummary => SelectedAttentionFilter switch
+    {
+        OrderAttentionFilter.Overdue => "Showing orders past their expected date",
+        OrderAttentionFilter.MissingTracking => "Showing open orders without tracking",
+        OrderAttentionFilter.ReadyToArchive => "Showing delivered orders ready to archive",
+        _ => "All active orders"
+    };
 
     public OrderSortOption SelectedSort
     {
@@ -526,6 +647,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Settings.AccountGroup = value;
                 ApplyAccountPresetSortAndGroup();
+                OnPropertyChanged(nameof(ShowAccountMerchantColumn));
             }
         }
     }
@@ -552,6 +674,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Settings.ItemGroup = value;
                 ApplyItemPresetSortAndGroup();
+                OnPropertyChanged(nameof(ShowItemMerchantColumn));
             }
         }
     }
@@ -578,9 +701,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 OrdersView.Refresh();
                 RefreshItemExpansionToggleState();
+                OnPropertyChanged(nameof(AreAllVisibleOrdersSelected));
             }
         }
     }
+
+    public bool ShowOrderMerchantColumn => Settings.Columns.ShowMerchant && SelectedGroup != OrderGroupOption.Merchant;
+
+    public bool ShowAccountMerchantColumn => SelectedAccountGroup != AccountGroupOption.Merchant;
+
+    public bool ShowItemMerchantColumn => SelectedItemGroup != ItemGroupOption.Merchant;
+
+    public bool ShowOrderGroupHeaders => SelectedGroup != OrderGroupOption.None && OrdersView.Groups?.Count > 1;
+
+    public bool ShowAccountGroupHeaders => SelectedAccountGroup != AccountGroupOption.None && AccountPresetsView.Groups?.Count > 1;
+
+    public bool ShowItemGroupHeaders => SelectedItemGroup != ItemGroupOption.None && PresetsView.Groups?.Count > 1;
 
     public int CompletedOrdersReadyToArchiveCount => Orders.Count(order => order.Status == OrderStatus.Delivered && !order.IsArchived);
 
@@ -608,6 +744,62 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int SelectedAccountPresetCount => AccountPresets.Count(preset => preset.IsSelected);
 
     public int SelectedPresetCount => ItemPresets.Count(preset => preset.IsSelected);
+
+    public bool HasSelectedActiveOrders => SelectedActiveOrderCount > 0;
+
+    public bool HasSelectedArchivedOrders => SelectedArchivedOrderCount > 0;
+
+    public bool HasSelectedAccountPresets => SelectedAccountPresetCount > 0;
+
+    public bool HasSelectedPresets => SelectedPresetCount > 0;
+
+    public bool? AreAllVisibleOrdersSelected
+    {
+        get => GetVisibleSelectionState(OrdersView, item => item is Order { IsArchived: false } order && order.IsSelected);
+        set
+        {
+            if (value.HasValue)
+            {
+                SelectOrders(OrdersView, value.Value);
+            }
+        }
+    }
+
+    public bool? AreAllVisibleArchivedOrdersSelected
+    {
+        get => GetVisibleSelectionState(ArchivedOrdersView, item => item is Order { IsArchived: true } order && order.IsSelected);
+        set
+        {
+            if (value.HasValue)
+            {
+                SelectOrders(ArchivedOrdersView, value.Value);
+            }
+        }
+    }
+
+    public bool? AreAllVisibleAccountPresetsSelected
+    {
+        get => GetVisibleSelectionState(AccountPresetsView, item => item is AccountPreset preset && preset.IsSelected);
+        set
+        {
+            if (value.HasValue)
+            {
+                SelectAccountPresets(AccountPresetsView, value.Value);
+            }
+        }
+    }
+
+    public bool? AreAllVisiblePresetsSelected
+    {
+        get => GetVisibleSelectionState(PresetsView, item => item is ItemPreset preset && preset.IsSelected);
+        set
+        {
+            if (value.HasValue)
+            {
+                SelectItemPresets(PresetsView, value.Value);
+            }
+        }
+    }
 
     public string ActiveOrderBulkSelectionSummary => FormatSelectedCount(SelectedActiveOrderCount, "active order");
 
@@ -644,6 +836,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string OrderEditorTitle => IsEditingOrder ? "Edit order" : "New order";
 
     public bool CanSaveOrder => IsOrderEditorOpen && FormItems.Any(item => !string.IsNullOrWhiteSpace(item.Name));
+
+    public bool IsOrderAdvancedOpen
+    {
+        get => _isOrderAdvancedOpen;
+        set => SetProperty(ref _isOrderAdvancedOpen, value);
+    }
+
+    public decimal FormSubtotal => FormItems.Sum(item => ParseQuantityPreview(item.QuantityInput) * ParseMoneyPreview(item.UnitPriceInput));
+
+    public decimal FormTotal => FormSubtotal + ParseMoneyPreview(FormShippingCostInput);
+
+    public decimal FormEffectiveRoiPercent => ParseOptionalPreview(FormProjectedRoiPercentInput) ?? Settings.GetProjectedRoiPercent(FormMerchant);
+
+    public decimal FormProjectedProfit => ParseOptionalPreview(FormProjectedProfitInput) ?? AppSettings.CalculateProjectedRoiAmount(FormTotal, FormEffectiveRoiPercent);
+
+    public string FormProjectionSummary => $"Projected profit {FormProjectedProfit.ToString("C", CultureInfo.CurrentCulture)} at {FormEffectiveRoiPercent.ToString("0.##", CultureInfo.CurrentCulture)}%";
 
     public AccountPreset? SelectedOrderAccountPreset
     {
@@ -685,6 +893,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _formMerchant, value))
             {
                 RefreshOrderAccountPresets();
+                OrderItemPresetsView.Refresh();
+                RefreshOrderPreview();
             }
         }
     }
@@ -734,7 +944,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string FormShippingCostInput
     {
         get => _formShippingCostInput;
-        set => SetProperty(ref _formShippingCostInput, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formShippingCostInput, value ?? string.Empty))
+            {
+                RefreshOrderPreview();
+            }
+        }
     }
 
     public string FormTaxInput
@@ -763,7 +979,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string FormProjectedRoiPercentInput
     {
         get => _formProjectedRoiPercentInput;
-        set => SetProperty(ref _formProjectedRoiPercentInput, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formProjectedRoiPercentInput, value ?? string.Empty))
+            {
+                RefreshOrderPreview();
+            }
+        }
     }
 
     public decimal? FormProjectedProfitOverride
@@ -780,7 +1002,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string FormProjectedProfitInput
     {
         get => _formProjectedProfitInput;
-        set => SetProperty(ref _formProjectedProfitInput, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formProjectedProfitInput, value ?? string.Empty))
+            {
+                RefreshOrderPreview();
+            }
+        }
     }
 
     public DateTime? FormOrderDate
@@ -861,6 +1089,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool CanSavePreset => IsPresetEditorOpen && !string.IsNullOrWhiteSpace(PresetName);
 
+    public bool IsPresetAdvancedOpen
+    {
+        get => _isPresetAdvancedOpen;
+        set => SetProperty(ref _isPresetAdvancedOpen, value);
+    }
+
     public string PresetName
     {
         get => _presetName;
@@ -869,6 +1103,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _presetName, value ?? string.Empty))
             {
                 ((RelayCommand)SavePresetCommand).RaiseCanExecuteChanged();
+                RefreshCurrentCommandState();
             }
         }
     }
@@ -1004,6 +1239,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool CanSaveAccountPreset => IsAccountPresetEditorOpen && !string.IsNullOrWhiteSpace(AccountPresetEmail);
 
+    public bool IsAccountAdvancedOpen
+    {
+        get => _isAccountAdvancedOpen;
+        set => SetProperty(ref _isAccountAdvancedOpen, value);
+    }
+
     public string AccountPresetName
     {
         get => _accountPresetName;
@@ -1018,6 +1259,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _accountPresetEmail, value ?? string.Empty))
             {
                 ((RelayCommand)SaveAccountPresetCommand).RaiseCanExecuteChanged();
+                RefreshCurrentCommandState();
             }
         }
     }
@@ -1061,6 +1303,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 ((RelayCommand)ConfirmDialogCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)CancelDialogCommand).RaiseCanExecuteChanged();
+                RefreshCurrentCommandState();
             }
         }
     }
@@ -1098,7 +1341,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool IsAccountUsageAuditOpen
     {
         get => _isAccountUsageAuditOpen;
-        private set => SetProperty(ref _isAccountUsageAuditOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isAccountUsageAuditOpen, value))
+            {
+                RefreshCurrentCommandState();
+            }
+        }
     }
 
     public string AccountUsageAuditTitle => _accountUsageAuditPreset is null
@@ -1118,6 +1367,55 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public string DataFilePath => _dataStore.DataFilePath;
+
+    public bool IsDiscordWebhookRevealed
+    {
+        get => _isDiscordWebhookRevealed;
+        set
+        {
+            if (SetProperty(ref _isDiscordWebhookRevealed, value))
+            {
+                OnPropertyChanged(nameof(DiscordWebhookRevealLabel));
+            }
+        }
+    }
+
+    public string DiscordWebhookRevealLabel => IsDiscordWebhookRevealed ? "Hide" : "Reveal";
+
+    public string DiscordWebhookConfigurationStatus => string.IsNullOrWhiteSpace(Settings.DiscordWebhookUrl)
+        ? "No webhook configured."
+        : "Webhook configured and hidden.";
+
+    public string SettingsSaveStatus
+    {
+        get => _settingsSaveStatus;
+        private set => SetProperty(ref _settingsSaveStatus, value);
+    }
+
+    public int DashboardMonthRange
+    {
+        get => Settings.DashboardMonthRange;
+        set
+        {
+            if (Settings.DashboardMonthRange != value)
+            {
+                Settings.DashboardMonthRange = value;
+                OnPropertyChanged();
+                RefreshDashboard();
+            }
+        }
+    }
+
+    public bool CanSaveCurrent => SelectedPage switch
+    {
+        AppPage.Orders => CanSaveOrder,
+        AppPage.Accounts => CanSaveAccountPreset,
+        AppPage.Presets => CanSavePreset,
+        AppPage.Settings => !Settings.AutoSave,
+        _ => false
+    };
+
+    public bool CanCloseCurrentPanel => IsConfirmationOpen || IsAccountUsageAuditOpen || IsOrderEditorOpen || IsAccountPresetEditorOpen || IsPresetEditorOpen;
 
     public int MerchantIconCacheVersion
     {
@@ -1152,6 +1450,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             _dataStore.Save(_data);
+            SettingsSaveStatus = $"Saved {DateTime.Now.ToString("h:mm tt", CultureInfo.CurrentCulture)}";
             if (!string.IsNullOrWhiteSpace(message))
             {
                 LastActionMessage = message;
@@ -1159,6 +1458,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            SettingsSaveStatus = "Save failed";
             LastActionMessage = $"Could not save data: {ex.Message}";
         }
     }
@@ -1212,6 +1512,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             default:
                 return false;
         }
+    }
+
+    private static bool? GetVisibleSelectionState(System.Collections.IEnumerable items, Func<object, bool> isSelected)
+    {
+        var visibleItems = items.Cast<object>().ToList();
+        if (visibleItems.Count == 0)
+        {
+            return false;
+        }
+
+        var selectedCount = visibleItems.Count(isSelected);
+        if (selectedCount == 0)
+        {
+            return false;
+        }
+
+        return selectedCount == visibleItems.Count ? true : null;
     }
 
     private void QueueMerchantFaviconFetch()
@@ -1397,6 +1714,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         FormTrackingStatus = string.Empty;
         FormTrackingNumbersText = string.Empty;
         FormNotes = string.Empty;
+        IsOrderAdvancedOpen = false;
         OnPropertyChanged(nameof(IsEditingOrder));
         OnPropertyChanged(nameof(OrderEditorTitle));
     }
@@ -1441,6 +1759,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         FormTrackingStatus = order.TrackingStatus;
         FormTrackingNumbersText = string.Join(Environment.NewLine, order.TrackingNumbers.Select(tracking => tracking.Number));
         FormNotes = order.Notes;
+        IsOrderAdvancedOpen = order.ShippingCost != 0m || order.ProjectedProfitOverride.HasValue || !string.IsNullOrWhiteSpace(order.TrackingStatus);
         IsOrderEditorOpen = true;
         SelectedPage = AppPage.Orders;
         OnPropertyChanged(nameof(IsEditingOrder));
@@ -1776,6 +2095,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RefreshAfterOrderChange(message);
     }
 
+    private void RunPrimaryOrderAction(Order? order)
+    {
+        if (order is null || order.IsArchived)
+        {
+            return;
+        }
+
+        if (order.Status != OrderStatus.Delivered)
+        {
+            ToggleCompleted(order);
+            return;
+        }
+
+        var label = DescribeOrder(order);
+        ShowConfirmation(
+            "Archive delivered order",
+            $"Archive {label}? It will move out of Orders and remain available on the Archive page.",
+            "Archive",
+            () => ArchiveOrders(new[] { order }, $"Archived {label}."),
+            cancelMessage: "Archive canceled.");
+    }
+
     private void SelectOrders(System.Collections.IEnumerable orders, bool selected)
     {
         RunWithBulkSelectionNotificationsSuppressed(() =>
@@ -1788,6 +2129,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 }
             }
         });
+    }
+
+    private void ApplyOrderAttentionFilter(object? parameter)
+    {
+        var filter = parameter switch
+        {
+            OrderAttentionFilter typedFilter => typedFilter,
+            string text when Enum.TryParse<OrderAttentionFilter>(text, out var parsed) => parsed,
+            _ => OrderAttentionFilter.All
+        };
+
+        SearchText = string.Empty;
+        HideCompleted = false;
+        SelectedAttentionFilter = filter;
+        SelectedPage = AppPage.Orders;
+        LastActionMessage = AttentionFilterSummary;
     }
 
     private void ToggleVisibleOrderItemsExpansion()
@@ -1996,6 +2353,74 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void SaveCurrent()
+    {
+        switch (SelectedPage)
+        {
+            case AppPage.Orders when CanSaveOrder:
+                SaveOrder();
+                break;
+            case AppPage.Accounts when CanSaveAccountPreset:
+                SaveAccountPreset();
+                break;
+            case AppPage.Presets when CanSavePreset:
+                SavePreset();
+                break;
+            case AppPage.Settings when !Settings.AutoSave:
+                SaveNow("Settings saved.");
+                break;
+        }
+    }
+
+    private void CloseCurrentPanel()
+    {
+        if (IsConfirmationOpen)
+        {
+            CancelDialog();
+            return;
+        }
+
+        if (IsAccountUsageAuditOpen)
+        {
+            CloseAccountUsageAudit();
+            return;
+        }
+
+        if (IsOrderEditorOpen)
+        {
+            CloseOrderEditor();
+            return;
+        }
+
+        if (IsAccountPresetEditorOpen)
+        {
+            CloseAccountPresetEditor();
+            return;
+        }
+
+        if (IsPresetEditorOpen)
+        {
+            ClosePresetEditor();
+        }
+    }
+
+    private void ClearDiscordWebhook()
+    {
+        ShowConfirmation(
+            "Clear Discord webhook",
+            "Remove the configured Discord webhook URL from this app? Discord stats will remain disabled until another URL is entered.",
+            "Clear webhook",
+            () =>
+            {
+                Settings.DiscordWebhookUrl = string.Empty;
+                Settings.DiscordEnabled = false;
+                IsDiscordWebhookRevealed = false;
+                SaveNow("Discord webhook cleared.");
+            },
+            isDanger: true,
+            cancelMessage: "Webhook clear canceled.");
+    }
+
     private async Task<string> OpenUrlAsync(string url, BrowserSessionContext? sessionContext)
     {
         try
@@ -2140,6 +2565,45 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             .Select(CarrierRecognizer.NormalizeTrackingNumber)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void RefreshOrderPreview()
+    {
+        OnPropertyChanged(nameof(FormSubtotal));
+        OnPropertyChanged(nameof(FormTotal));
+        OnPropertyChanged(nameof(FormEffectiveRoiPercent));
+        OnPropertyChanged(nameof(FormProjectedProfit));
+        OnPropertyChanged(nameof(FormProjectionSummary));
+    }
+
+    private static int ParseQuantityPreview(string input)
+    {
+        return int.TryParse(input, NumberStyles.Integer, CultureInfo.CurrentCulture, out var current) ||
+               int.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out current)
+            ? Math.Max(1, current)
+            : 1;
+    }
+
+    private static decimal ParseMoneyPreview(string input)
+    {
+        return decimal.TryParse(input, NumberStyles.Currency, CultureInfo.CurrentCulture, out var current) ||
+               decimal.TryParse(input, NumberStyles.Currency, CultureInfo.InvariantCulture, out current)
+            ? Math.Max(0m, current)
+            : 0m;
+    }
+
+    private static decimal? ParseOptionalPreview(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return null;
+        }
+
+        var text = input.Trim().TrimEnd('%');
+        return decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var current) ||
+               decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out current)
+            ? Math.Max(0m, current)
+            : null;
     }
 
     private bool TryParseQuantity(string input, string label, out int value)
@@ -2387,6 +2851,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         ((RelayCommand)SaveOrderCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RemoveOrderItemCommand).RaiseCanExecuteChanged();
+        RefreshOrderPreview();
     }
 
     private void FormItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -2394,6 +2859,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (e.PropertyName == nameof(OrderItem.Name))
         {
             ((RelayCommand)SaveOrderCommand).RaiseCanExecuteChanged();
+            RefreshCurrentCommandState();
+        }
+
+        if (e.PropertyName is nameof(OrderItem.QuantityInput) or nameof(OrderItem.UnitPriceInput) or nameof(OrderItem.Quantity) or nameof(OrderItem.UnitPrice))
+        {
+            RefreshOrderPreview();
         }
     }
 
@@ -2527,6 +2998,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             PresetsView.Refresh();
         }
 
+        OrderItemPresetsView.Refresh();
+
         SelectedPage = AppPage.Orders;
         LastActionMessage = $"Applied item '{preset.Name}'.";
         PersistIfNeeded();
@@ -2560,6 +3033,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         AccountPresetMerchantHint = MerchantKind.Unknown;
         AccountPresetIsFavorite = false;
         AccountPresetNotes = string.Empty;
+        IsAccountAdvancedOpen = false;
         OnPropertyChanged(nameof(IsEditingAccountPreset));
         OnPropertyChanged(nameof(AccountPresetEditorTitle));
     }
@@ -2586,6 +3060,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         AccountPresetMerchantHint = preset.MerchantHint;
         AccountPresetIsFavorite = preset.IsFavorite;
         AccountPresetNotes = preset.Notes;
+        IsAccountAdvancedOpen = preset.IsFavorite || !string.IsNullOrWhiteSpace(preset.Notes);
         IsAccountPresetEditorOpen = true;
         SelectedPage = AppPage.Accounts;
         OnPropertyChanged(nameof(IsEditingAccountPreset));
@@ -2798,6 +3273,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PresetDefaultTax = 0m;
         PresetIsFavorite = false;
         PresetNotes = string.Empty;
+        IsPresetAdvancedOpen = false;
         OnPropertyChanged(nameof(IsEditingPreset));
         OnPropertyChanged(nameof(PresetEditorTitle));
     }
@@ -2828,6 +3304,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PresetDefaultTax = preset.DefaultTax;
         PresetIsFavorite = preset.IsFavorite;
         PresetNotes = preset.Notes;
+        IsPresetAdvancedOpen = !string.IsNullOrWhiteSpace(preset.Category) || preset.DefaultShipping != 0m || preset.DefaultTax != 0m || preset.IsFavorite || !string.IsNullOrWhiteSpace(preset.Notes);
         IsPresetEditorOpen = true;
         SelectedPage = AppPage.Presets;
         OnPropertyChanged(nameof(IsEditingPreset));
@@ -2912,6 +3389,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 }
 
                 PresetsView.Refresh();
+                OnPropertyChanged(nameof(ShowItemGroupHeaders));
+                OnPropertyChanged(nameof(AreAllVisiblePresetsSelected));
                 RefreshBulkSelectionState();
                 SaveNow($"Deleted {label}.");
             },
@@ -3055,6 +3534,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        var today = DateTime.Today;
+        var matchesAttentionFilter = SelectedAttentionFilter switch
+        {
+            OrderAttentionFilter.Overdue => IsOpenOrder(order) && order.ExpectedDate?.Date < today,
+            OrderAttentionFilter.MissingTracking => IsOpenOrder(order) && !order.HasTrackingNumbers,
+            OrderAttentionFilter.ReadyToArchive => order.Status == OrderStatus.Delivered,
+            _ => true
+        };
+
+        if (!matchesAttentionFilter)
+        {
+            return false;
+        }
+
         return MatchesOrderSearch(order, SearchText);
     }
 
@@ -3108,6 +3601,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         var haystack = string.Join(" ", preset.Name, preset.Category, preset.MerchantHint, preset.Notes);
         return haystack.Contains(PresetSearchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool FilterOrderItemPreset(object value)
+    {
+        return value is ItemPreset preset &&
+               (FormMerchant == MerchantKind.Unknown || preset.MerchantHint is MerchantKind.Unknown || preset.MerchantHint == FormMerchant);
     }
 
     private bool FilterAccountPreset(object value)
@@ -3168,7 +3667,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (changed)
         {
-            AccountPresetsView.Refresh();
+                AccountPresetsView.Refresh();
+                OnPropertyChanged(nameof(ShowAccountGroupHeaders));
+                OnPropertyChanged(nameof(AreAllVisibleAccountPresetsSelected));
             RefreshOrderAccountPresets();
         }
 
@@ -3301,6 +3802,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OrdersView.SortDescriptions.Add(sort);
             }
         }
+
+        OnPropertyChanged(nameof(ShowOrderGroupHeaders));
     }
 
     private void ApplyArchiveSort()
@@ -3320,6 +3823,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         ApplyViewSortAndGroup(AccountPresetsView, sortDescriptions, groupDescriptions);
         ApplyViewSortAndGroup(OrderAccountPresetsView, sortDescriptions);
+        OnPropertyChanged(nameof(ShowAccountGroupHeaders));
     }
 
     private void ApplyItemPresetSortAndGroup()
@@ -3328,6 +3832,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var groupDescriptions = GetItemPresetGroupDescriptions().ToList();
 
         ApplyViewSortAndGroup(PresetsView, sortDescriptions, groupDescriptions);
+        OnPropertyChanged(nameof(ShowItemGroupHeaders));
     }
 
     private static void ApplyViewSortAndGroup(
@@ -3547,6 +4052,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void RefreshDashboard()
     {
         var orders = Orders.ToList();
+        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
+        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
 
         MetricCards.Clear();
         foreach (var card in BuildMetricCards(orders))
@@ -3554,9 +4061,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             MetricCards.Add(card);
         }
 
-        ReplaceChart(MonthlySpend, BuildMonthlySpend(orders));
-        ReplaceChart(MonthlyProjectedRoi, BuildMonthlyProjectedRoi(orders));
-        ReplaceChart(YearlySpend, BuildYearlySpend(orders));
+        ReplaceMonthlyComparison(MonthlyComparison, BuildMonthlyComparison(orders));
         ReplaceChart(MerchantSpend, BuildMerchantSpend(orders));
         ReplaceChart(StatusBreakdown, BuildStatusBreakdown(orders));
         RefreshSidebarAlerts(orders);
@@ -3585,7 +4090,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Label = "Past expected",
                 Detail = $"{FormatSimpleCount(overdueOrders, "order")} past expected date.",
-                Accent = "#E05D5D"
+                Accent = "#E05D5D",
+                Command = ApplyOrderAttentionFilterCommand,
+                CommandParameter = OrderAttentionFilter.Overdue
             });
         }
 
@@ -3596,7 +4103,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Label = "Expected today",
                 Detail = $"{FormatSimpleCount(dueTodayOrders, "order")} may land today.",
-                Accent = "#FFB547"
+                Accent = "#FFB547",
+                Command = NavigateCommand,
+                CommandParameter = AppPage.Orders.ToString()
             });
         }
 
@@ -3607,7 +4116,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Label = "Ready to archive",
                 Detail = $"{FormatSimpleCount(completedOrdersReadyToArchive, "order")} can move off Orders.",
-                Accent = "#2F9E7E"
+                Accent = "#2F9E7E",
+                Command = ApplyOrderAttentionFilterCommand,
+                CommandParameter = OrderAttentionFilter.ReadyToArchive
             });
         }
 
@@ -3618,7 +4129,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Label = "Missing tracking",
                 Detail = $"{FormatSimpleCount(missingTrackingOrders, "open order")} without tracking.",
-                Accent = "#7C9BFF"
+                Accent = "#7C9BFF",
+                Command = ApplyOrderAttentionFilterCommand,
+                CommandParameter = OrderAttentionFilter.MissingTracking
             });
         }
 
@@ -3666,37 +4179,55 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var today = DateTime.Today;
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
-        var yearStart = new DateTime(today.Year, 1, 1);
-        var yearEnd = yearStart.AddYears(1);
         var activeOpenOrders = orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
         var openOrders = activeOpenOrders.Count;
         var openBalance = activeOpenOrders.Sum(order => order.TotalCost);
-        var deliveredThisMonth = orders.Count(order =>
-            order.Status == OrderStatus.Delivered &&
-            order.DeliveredDate >= monthStart &&
-            order.DeliveredDate < monthEnd);
-        var totalSpend = orders.Sum(order => order.TotalCost);
         var monthOrders = orders.Where(order => order.OrderDate >= monthStart && order.OrderDate < monthEnd).ToList();
-        var yearOrders = orders.Where(order => order.OrderDate >= yearStart && order.OrderDate < yearEnd).ToList();
         var monthSpend = monthOrders.Sum(order => order.TotalCost);
-        var yearSpend = yearOrders.Sum(order => order.TotalCost);
         var projectedMonthRoi = CalculateProjectedRoi(monthOrders);
-        var projectedYearRoi = CalculateProjectedRoi(yearOrders);
         var monthEffectiveRoiPercent = CalculateEffectiveRoiPercent(monthSpend, projectedMonthRoi);
-        var yearEffectiveRoiPercent = CalculateEffectiveRoiPercent(yearSpend, projectedYearRoi);
-        var averageMonthlyProjectedRoi = CalculateAverageMonthlyProjectedRoi(orders);
 
         return new[]
         {
             new MetricCard { Label = "Open orders", Value = openOrders.ToString(CultureInfo.CurrentCulture), Detail = "Still moving or waiting", Accent = "#5CC8FF" },
             new MetricCard { Label = "Open balance", Value = openBalance.ToString("C", CultureInfo.CurrentCulture), Detail = "Not yet completed", Accent = "#F57FB0" },
-            new MetricCard { Label = "Total spend", Value = totalSpend.ToString("C", CultureInfo.CurrentCulture), Detail = "All tracked orders", Accent = "#7CDB7C" },
             new MetricCard { Label = "This month", Value = monthSpend.ToString("C", CultureInfo.CurrentCulture), Detail = "Orders placed this month", Accent = "#FFB547" },
-            new MetricCard { Label = "Projected month ROI", Value = projectedMonthRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(monthEffectiveRoiPercent)} effective ROI rate", Accent = "#2F9E7E" },
-            new MetricCard { Label = "Projected year ROI", Value = projectedYearRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(yearEffectiveRoiPercent)} effective ROI rate", Accent = "#7C9BFF" },
-            new MetricCard { Label = "Avg monthly ROI", Value = averageMonthlyProjectedRoi.ToString("C", CultureInfo.CurrentCulture), Detail = "Projected, last 12 months", Accent = "#39B7A5" },
-            new MetricCard { Label = "Completed", Value = deliveredThisMonth.ToString(CultureInfo.CurrentCulture), Detail = "Delivered this month", Accent = "#B389FF" }
+            new MetricCard { Label = "Projected month ROI", Value = projectedMonthRoi.ToString("C", CultureInfo.CurrentCulture), Detail = $"{FormatPercent(monthEffectiveRoiPercent)} effective ROI rate", Accent = "#2F9E7E" }
         };
+    }
+
+    private IEnumerable<MonthlyComparisonPoint> BuildMonthlyComparison(IReadOnlyCollection<Order> orders)
+    {
+        var range = Settings.DashboardMonthRange is 3 or 6 or 12 ? Settings.DashboardMonthRange : 3;
+        var start = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-(range - 1));
+        var points = Enumerable.Range(0, range)
+            .Select(offset => start.AddMonths(offset))
+            .Select(month =>
+            {
+                var next = month.AddMonths(1);
+                var monthOrders = orders.Where(order => order.OrderDate >= month && order.OrderDate < next).ToList();
+                var spend = monthOrders.Sum(order => order.TotalCost);
+                var roi = monthOrders.Sum(Settings.GetProjectedRoiAmount);
+                return new MonthlyComparisonPoint
+                {
+                    Label = month.ToString("MMM yy", CultureInfo.CurrentCulture),
+                    Spend = spend,
+                    ProjectedRoi = roi,
+                    SpendDisplay = spend.ToString("C0", CultureInfo.CurrentCulture),
+                    RoiDisplay = roi.ToString("C0", CultureInfo.CurrentCulture)
+                };
+            })
+            .ToList();
+
+        var maxSpend = points.Max(point => point.Spend);
+        var maxRoi = points.Max(point => point.ProjectedRoi);
+        foreach (var point in points)
+        {
+            point.SpendPercent = maxSpend <= 0m ? 0d : (double)(point.Spend / maxSpend * 100m);
+            point.RoiPercent = maxRoi <= 0m ? 0d : (double)(point.ProjectedRoi / maxRoi * 100m);
+        }
+
+        return points;
     }
 
     private decimal CalculateAverageMonthlyProjectedRoi(IReadOnlyCollection<Order> orders)
@@ -3932,6 +4463,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var item in source)
         {
             target.Add(item);
+        }
+    }
+
+    private static void ReplaceMonthlyComparison(ObservableCollection<MonthlyComparisonPoint> target, IEnumerable<MonthlyComparisonPoint> source)
+    {
+        target.Clear();
+        foreach (var point in source)
+        {
+            target.Add(point);
         }
     }
 
@@ -4177,6 +4717,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void SettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (sender == Settings && e.PropertyName == nameof(AppSettings.IsSidebarCollapsed))
+        {
+            OnPropertyChanged(nameof(SidebarWidth));
+            OnPropertyChanged(nameof(IsSidebarExpanded));
+        }
+
+        if (sender == Settings && e.PropertyName == nameof(AppSettings.DiscordWebhookUrl))
+        {
+            OnPropertyChanged(nameof(DiscordWebhookConfigurationStatus));
+            ((RelayCommand)ClearDiscordWebhookCommand).RaiseCanExecuteChanged();
+        }
+
+        if (sender == Settings.Columns && e.PropertyName == nameof(ColumnSettings.ShowMerchant))
+        {
+            OnPropertyChanged(nameof(ShowOrderMerchantColumn));
+        }
+
         if (sender == Settings && e.PropertyName == nameof(AppSettings.UseAccountBrowserSessions))
         {
             RaiseAccountSessionCommandState();
@@ -4199,6 +4756,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (sender == Settings && e.PropertyName == nameof(AppSettings.AutoSave))
         {
             SaveNow();
+            RefreshCurrentCommandState();
             return;
         }
 
@@ -4243,6 +4801,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void MerchantProjectedRoiSettingPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         RefreshDashboard();
+        RefreshOrderPreview();
         PersistIfNeeded();
     }
 
@@ -4308,6 +4867,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RefreshAccountUsageCounts();
         RefreshBulkSelectionState();
         RefreshOrderAccountPresets();
+        OnPropertyChanged(nameof(AccountPresetCount));
+        OnPropertyChanged(nameof(AccountsNavLabel));
+        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
+        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
     }
 
     private void ItemPresetsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -4334,6 +4897,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         RefreshBulkSelectionState();
+        OrderItemPresetsView.Refresh();
+        OnPropertyChanged(nameof(ItemPresetCount));
+        OnPropertyChanged(nameof(ItemsNavLabel));
+        OnPropertyChanged(nameof(ActiveMerchantRoiSettings));
+        OnPropertyChanged(nameof(InactiveMerchantRoiSettings));
     }
 
     private void AccountPresetPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -4397,6 +4965,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         PresetsView.Refresh();
+        OrderItemPresetsView.Refresh();
         PersistIfNeeded();
     }
 
@@ -4481,6 +5050,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         OrdersView.Refresh();
         ArchivedOrdersView.Refresh();
+        OnPropertyChanged(nameof(ShowOrderGroupHeaders));
         RefreshItemExpansionToggleState();
     }
 
@@ -4494,8 +5064,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void RefreshArchiveState()
     {
+        OnPropertyChanged(nameof(ActiveOrderCount));
+        OnPropertyChanged(nameof(OrdersNavLabel));
         OnPropertyChanged(nameof(CompletedOrdersReadyToArchiveCount));
         OnPropertyChanged(nameof(ArchivedOrderCount));
+        OnPropertyChanged(nameof(ArchiveNavLabel));
         OnPropertyChanged(nameof(ArchiveCompletedOrdersLabel));
         OnPropertyChanged(nameof(ArchivedOrderSummary));
         ((RelayCommand)ArchiveCompletedOrdersCommand).RaiseCanExecuteChanged();
@@ -4534,6 +5107,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             closePresetEditorCommand.RaiseCanExecuteChanged();
         }
+
+        RefreshCurrentCommandState();
+    }
+
+    private void RefreshCurrentCommandState()
+    {
+        OnPropertyChanged(nameof(CanSaveCurrent));
+        OnPropertyChanged(nameof(CanCloseCurrentPanel));
+        ((RelayCommand)SaveCurrentCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CloseCurrentPanelCommand).RaiseCanExecuteChanged();
     }
 
     private void RaiseAccountSessionCommandState()
@@ -4552,6 +5135,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedArchivedOrderCount));
         OnPropertyChanged(nameof(SelectedAccountPresetCount));
         OnPropertyChanged(nameof(SelectedPresetCount));
+        OnPropertyChanged(nameof(HasSelectedActiveOrders));
+        OnPropertyChanged(nameof(HasSelectedArchivedOrders));
+        OnPropertyChanged(nameof(HasSelectedAccountPresets));
+        OnPropertyChanged(nameof(HasSelectedPresets));
+        OnPropertyChanged(nameof(AreAllVisibleOrdersSelected));
+        OnPropertyChanged(nameof(AreAllVisibleArchivedOrdersSelected));
+        OnPropertyChanged(nameof(AreAllVisibleAccountPresetsSelected));
+        OnPropertyChanged(nameof(AreAllVisiblePresetsSelected));
         OnPropertyChanged(nameof(ActiveOrderBulkSelectionSummary));
         OnPropertyChanged(nameof(ArchivedOrderBulkSelectionSummary));
         OnPropertyChanged(nameof(AccountPresetBulkSelectionSummary));
@@ -4594,6 +5185,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        SettingsSaveStatus = "Saving...";
         _autosaveTimer.Stop();
         _autosaveTimer.Start();
     }

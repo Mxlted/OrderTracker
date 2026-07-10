@@ -45,6 +45,12 @@ public partial class MainWindow : Window
         nameof(CopyHighlightedTrackingNumbersCommand),
         typeof(MainWindow));
 
+    public static readonly RoutedUICommand FocusSearchCommand = new(
+        "Focus search",
+        nameof(FocusSearchCommand),
+        typeof(MainWindow),
+        new InputGestureCollection { new KeyGesture(Key.F, ModifierKeys.Control) });
+
     private static readonly Dictionary<string, (string Light, string Dark, string Oled)> ThemeBrushes = new()
     {
         ["AppBackgroundBrush"] = ("#F3F6FA", "#101113", "#000000"),
@@ -92,11 +98,21 @@ public partial class MainWindow : Window
             CopyHighlightedTrackingNumbersCommand,
             CopyHighlightedTrackingNumbersExecuted,
             CanCopyHighlightedTrackingNumbers));
+        CommandBindings.Add(new CommandBinding(
+            FocusSearchCommand,
+            FocusSearchExecuted,
+            CanFocusSearch));
+        InputBindings.Add(new KeyBinding(_viewModel.NewOrderCommand, Key.N, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(_viewModel.SaveCurrentCommand, Key.S, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(_viewModel.SaveCurrentCommand, Key.Enter, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(_viewModel.CloseCurrentPanelCommand, Key.Escape, ModifierKeys.None));
+        InputBindings.Add(new KeyBinding(FocusSearchCommand, Key.F, ModifierKeys.Control));
         _viewModel.OrderRevealRequested += RevealOrder;
         _viewModel.Settings.PropertyChanged += SettingsPropertyChanged;
         Loaded += MainWindowLoaded;
         SizeChanged += MainWindowSizeChanged;
         ApplyTheme(_viewModel.Settings.Theme);
+        ApplyDensity(_viewModel.Settings.Density);
         ApplyWindowPlacement();
     }
 
@@ -153,6 +169,16 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(AppSettings.Theme))
         {
             ApplyTheme(_viewModel.Settings.Theme);
+        }
+
+        if (e.PropertyName == nameof(AppSettings.Density))
+        {
+            ApplyDensity(_viewModel.Settings.Density);
+        }
+
+        if (e.PropertyName == nameof(AppSettings.IsSidebarCollapsed))
+        {
+            Dispatcher.BeginInvoke((Action)RefreshScrollRailBindings, DispatcherPriority.Loaded);
         }
     }
 
@@ -254,7 +280,53 @@ public partial class MainWindow : Window
 
     private void SelectableGridSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        _viewModel.SetBulkSelection(e.RemovedItems.Cast<object>(), false);
+        _viewModel.SetBulkSelection(e.AddedItems.Cast<object>(), true);
         QueueCommandRequery();
+    }
+
+    private void OpenRowContextMenu(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || FindAncestor<DataGridRow>(button) is not { ContextMenu: { } menu } row)
+        {
+            return;
+        }
+
+        menu.PlacementTarget = row;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void CanFocusSearch(object sender, CanExecuteRoutedEventArgs e)
+    {
+        e.CanExecute = _viewModel.SelectedPage is AppPage.Orders or AppPage.Archive or AppPage.Accounts or AppPage.Presets;
+        e.Handled = true;
+    }
+
+    private void FocusSearchExecuted(object sender, ExecutedRoutedEventArgs e)
+    {
+        var searchBox = _viewModel.SelectedPage switch
+        {
+            AppPage.Orders => FindNamedTextBox("OrdersSearchBox"),
+            AppPage.Archive => FindNamedTextBox("ArchiveSearchBox"),
+            AppPage.Accounts => FindNamedTextBox("AccountsSearchBox"),
+            AppPage.Presets => FindNamedTextBox("ItemsSearchBox"),
+            _ => null
+        };
+
+        if (searchBox is not null)
+        {
+            searchBox.Focus();
+            searchBox.SelectAll();
+        }
+
+        e.Handled = true;
+    }
+
+    private TextBox? FindNamedTextBox(string name)
+    {
+        return FindName(name) as TextBox;
     }
 
     private void QueueCommandRequery()
@@ -905,6 +977,36 @@ public partial class MainWindow : Window
                 yield return descendant;
             }
         }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject source)
+        where T : DependencyObject
+    {
+        var current = VisualTreeHelper.GetParent(source);
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private void ApplyDensity(UiDensity density)
+    {
+        var compact = density == UiDensity.Compact;
+        Resources["GridHeaderPadding"] = compact ? new Thickness(8, 5, 8, 5) : new Thickness(10, 7, 10, 7);
+        Resources["GridHeaderMinHeight"] = compact ? 32d : 38d;
+        Resources["GridCellPadding"] = compact ? new Thickness(8, 5, 8, 5) : new Thickness(10, 7, 10, 7);
+        Resources["OrderRowMinHeight"] = compact ? 44d : 52d;
+        Resources["PresetRowMinHeight"] = compact ? 40d : 48d;
+        Resources["GridTextFontSize"] = compact ? 11.5d : 12.5d;
+        Resources["GridActionMinHeight"] = compact ? 26d : 30d;
+        Resources["GridActionFontSize"] = compact ? 11d : 12d;
     }
 
     private void ApplyTheme(AppTheme theme)

@@ -23,3 +23,20 @@ public sealed class ChartPoint
 
     public string Accent { get; set; } = "#5CC8FF";
 }
+
+public sealed class MonthlyComparisonPoint
+{
+    public string Label { get; set; } = string.Empty;
+
+    public decimal Spend { get; set; }
+
+    public decimal ProjectedRoi { get; set; }
+
+    public double SpendPercent { get; set; }
+
+    public double RoiPercent { get; set; }
+
+    public string SpendDisplay { get; set; } = string.Empty;
+
+    public string RoiDisplay { get; set; } = string.Empty;
+}

@@ -52,6 +52,9 @@
         <conv:MerchantBrushConverter x:Key="MerchantBrush"/>
         <conv:MerchantFaviconConverter x:Key="MerchantFavicon"/>
         <conv:ResponsiveItemWidthConverter x:Key="ResponsiveItemWidth"/>
+        <conv:AdaptiveEditorReserveWidthConverter x:Key="AdaptiveEditorReserveWidth"/>
+        <conv:EnumDisplayConverter x:Key="EnumDisplay"/>
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility"/>
         <util:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
 
         <Style TargetType="{x:Type TextBlock}">
@@ -137,6 +140,40 @@
                             </Trigger>
                             <Trigger Property="IsReadOnly" Value="True">
                                 <Setter TargetName="InputBorder" Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type PasswordBox}">
+            <Setter Property="Background" Value="{DynamicResource ControlBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="9,7"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type PasswordBox}">
+                        <Border x:Name="PasswordBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PasswordBorder" Property="Background" Value="{DynamicResource ControlHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="PasswordBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -664,14 +701,27 @@
 
         <Style x:Key="GridActionButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="7,4"/>
-            <Setter Property="MinHeight" Value="28"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="MinHeight" Value="{DynamicResource GridActionMinHeight}"/>
+            <Setter Property="FontSize" Value="{DynamicResource GridActionFontSize}"/>
         </Style>
 
         <Style x:Key="GridDangerActionButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource DangerButtonStyle}">
             <Setter Property="Padding" Value="7,4"/>
-            <Setter Property="MinHeight" Value="28"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="MinHeight" Value="{DynamicResource GridActionMinHeight}"/>
+            <Setter Property="FontSize" Value="{DynamicResource GridActionFontSize}"/>
+        </Style>
+
+        <Style x:Key="OverflowActionButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource GridActionButtonStyle}">
+            <Setter Property="Content" Value="⋯"/>
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="ToolTip" Value="More actions"/>
+            <Setter Property="AutomationProperties.Name" Value="More actions"/>
+        </Style>
+
+        <Style x:Key="ActionCellStyle" TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource {x:Type DataGridCell}}">
+            <Setter Property="Padding" Value="4,2"/>
         </Style>
 
         <Style x:Key="CopyIconButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
@@ -855,6 +905,63 @@
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
             <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="NavBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="24"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{TemplateBinding Tag}"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           FontFamily="Segoe MDL2 Assets"
+                                           FontSize="16"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                                <ContentPresenter Grid.Column="1"
+                                                  Content="{TemplateBinding Content}"
+                                                  Margin="10,0,0,0"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True">
+                                    <ContentPresenter.Style>
+                                        <Style TargetType="{x:Type ContentPresenter}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Data.IsSidebarExpanded, Source={StaticResource VmProxy}}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ContentPresenter.Style>
+                                </ContentPresenter>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="NavBorder" Property="Background" Value="{DynamicResource ControlHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="NavBorder" Property="Background" Value="{DynamicResource AccentDarkBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="NavBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSidebarExpanded}" Value="False">
+                    <Setter Property="Padding" Value="5,10"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="LinkButtonStyle" TargetType="{x:Type Button}">
@@ -941,34 +1048,58 @@
         </Style>
 
         <DataTemplate x:Key="SidebarPanelItemTemplate">
-            <Border Background="{DynamicResource ControlBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="8"
-                    Margin="0,0,0,6">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="{Binding Accent}"
-                            Width="3"
-                            CornerRadius="2"
-                            Margin="0,1,8,1"/>
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="{Binding Label}"
-                                   Foreground="{DynamicResource TextBrush}"
-                                   FontWeight="SemiBold"
-                                   FontSize="11.5"/>
-                        <TextBlock Text="{Binding Detail}"
-                                   Style="{StaticResource MutedTextStyle}"
-                                   TextWrapping="Wrap"
-                                   TextTrimming="None"
-                                   Margin="0,2,0,0"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
+            <Button Command="{Binding Command}"
+                    CommandParameter="{Binding CommandParameter}"
+                    Style="{StaticResource LinkButtonStyle}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch">
+                <Border Background="{DynamicResource ControlBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="8"
+                        Margin="0,0,0,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="{Binding Accent}"
+                                Width="3"
+                                CornerRadius="2"
+                                Margin="0,1,8,1"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding Label}"
+                                       Foreground="{DynamicResource TextBrush}"
+                                       FontWeight="SemiBold"
+                                       FontSize="11.5"/>
+                            <TextBlock Text="{Binding Detail}"
+                                       Style="{StaticResource MutedTextStyle}"
+                                       TextWrapping="Wrap"
+                                       TextTrimming="None"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Text="›"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   FontSize="18"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Command}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Border>
+            </Button>
         </DataTemplate>
 
         <DataTemplate x:Key="TrackingChipTemplate">
@@ -1027,6 +1158,34 @@
                     <Setter TargetName="TrackingCopyButton" Property="IsHitTestVisible" Value="True"/>
                 </Trigger>
             </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="MerchantRoiSettingTemplate">
+            <Border Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="7"
+                    Padding="10,7"
+                    Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="72"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Merchant, Converter={StaticResource EnumDisplay}}"
+                               Style="{StaticResource MutedTextStyle}"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding ProjectedRoiPercent, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.##}}"
+                             HorizontalContentAlignment="Right"
+                             Margin="10,0,6,0"/>
+                    <TextBlock Grid.Column="2"
+                               Text="%"
+                               Style="{StaticResource MutedTextStyle}"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
         </DataTemplate>
 
         <Style x:Key="ExpandToggleButtonStyle" TargetType="{x:Type ToggleButton}">
@@ -1365,8 +1524,8 @@
             <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="MinHeight" Value="38"/>
+            <Setter Property="Padding" Value="{DynamicResource GridHeaderPadding}"/>
+            <Setter Property="MinHeight" Value="{DynamicResource GridHeaderMinHeight}"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -1384,7 +1543,7 @@
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Padding" Value="{DynamicResource GridCellPadding}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type DataGridCell}">
@@ -1426,17 +1585,11 @@
         </Style>
 
         <Style x:Key="OrderRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
-            <Setter Property="MinHeight" Value="54"/>
+            <Setter Property="MinHeight" Value="{DynamicResource OrderRowMinHeight}"/>
             <EventSetter Event="MouseDoubleClick" Handler="OrderRowDoubleClick"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="Select"
-                                  Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
-                        <MenuItem Header="Unselect"
-                                  Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         <MenuItem Header="Edit"
                                   Command="{Binding Data.EditOrderCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -1461,16 +1614,10 @@
         </Style>
 
         <Style x:Key="ArchiveOrderRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
-            <Setter Property="MinHeight" Value="54"/>
+            <Setter Property="MinHeight" Value="{DynamicResource OrderRowMinHeight}"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="Select"
-                                  Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
-                        <MenuItem Header="Unselect"
-                                  Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         <MenuItem Header="Restore to Orders"
                                   Command="{Binding Data.RestoreOrderCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -1489,20 +1636,14 @@
         </Style>
 
         <Style x:Key="PresetRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
-            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="MinHeight" Value="{DynamicResource PresetRowMinHeight}"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="Select"
-                                  Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
-                        <MenuItem Header="Unselect"
-                                  Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         <MenuItem Header="Edit"
                                   Command="{Binding Data.EditPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
-                        <MenuItem Header="Apply to current order"
+                        <MenuItem Header="Use in order"
                                   Command="{Binding Data.ApplyPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Duplicate"
@@ -1517,20 +1658,14 @@
         </Style>
 
         <Style x:Key="AccountPresetRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource DataGridRowBaseStyle}">
-            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="MinHeight" Value="{DynamicResource PresetRowMinHeight}"/>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="Select"
-                                  Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
-                        <MenuItem Header="Unselect"
-                                  Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         <MenuItem Header="Edit"
                                   Command="{Binding Data.EditAccountPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
-                        <MenuItem Header="Apply to current order"
+                        <MenuItem Header="Use in order"
                                   Command="{Binding Data.ApplyAccountPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="View orders"
@@ -1561,7 +1696,7 @@
         </Style>
 
         <Style x:Key="CompactCellTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextStyle}">
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontSize" Value="{DynamicResource GridTextFontSize}"/>
         </Style>
 
         <Style x:Key="CellTextWithToolTipStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CellTextStyle}">
@@ -1702,7 +1837,7 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="236"/>
+            <ColumnDefinition Width="{Binding SidebarWidth}"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -1717,47 +1852,77 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Image Source="Assets/app-icon.png"
-                               Width="42"
-                               Height="42"
+                               Width="38"
+                               Height="38"
                                Stretch="Uniform"
                                RenderOptions.BitmapScalingMode="HighQuality"
-                               Margin="0,0,10,0"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                               Margin="0,0,10,0"
+                               Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolToVisibility}}"/>
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="Order Tracker"
-                                       FontSize="22"
+                                       FontSize="19"
                                        FontWeight="SemiBold"
                                        Margin="0,0,0,2"/>
-                            <TextBlock Text="Purchases, tracking, and spend"
+                            <TextBlock Text="Orders, tracking, and spend"
                                        Style="{StaticResource MutedTextStyle}"/>
                         </StackPanel>
+                        <Button Grid.Column="2"
+                                Content="☰"
+                                Command="{Binding ToggleSidebarCommand}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                ToolTip="Collapse or expand navigation"
+                                AutomationProperties.Name="Collapse or expand navigation"/>
                     </Grid>
 
                     <Button Content="Dashboard"
-                            Style="{StaticResource NavButtonStyle}"
+                            Tag="&#xE80F;"
                             Command="{Binding NavigateCommand}"
-                            CommandParameter="Dashboard"/>
-                    <Button Content="Orders"
-                            Style="{StaticResource NavButtonStyle}"
+                            CommandParameter="Dashboard"
+                            ToolTip="Dashboard">
+                        <Button.Style><Style TargetType="{x:Type Button}" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedPage}" Value="Dashboard"><Setter Property="Background" Value="{DynamicResource AccentDarkBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                    </Button>
+                    <Button Content="{Binding OrdersNavLabel}"
+                            Tag="&#xE8FD;"
                             Command="{Binding NavigateCommand}"
-                            CommandParameter="Orders"/>
-                    <Button Content="Archive"
-                            Style="{StaticResource NavButtonStyle}"
+                            CommandParameter="Orders"
+                            ToolTip="{Binding OrdersNavLabel}">
+                        <Button.Style><Style TargetType="{x:Type Button}" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedPage}" Value="Orders"><Setter Property="Background" Value="{DynamicResource AccentDarkBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                    </Button>
+                    <Button Content="{Binding ArchiveNavLabel}"
+                            Tag="&#xE7B8;"
                             Command="{Binding NavigateCommand}"
-                            CommandParameter="Archive"/>
-                    <Button Content="Accounts"
-                            Style="{StaticResource NavButtonStyle}"
+                            CommandParameter="Archive"
+                            ToolTip="{Binding ArchiveNavLabel}">
+                        <Button.Style><Style TargetType="{x:Type Button}" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedPage}" Value="Archive"><Setter Property="Background" Value="{DynamicResource AccentDarkBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                    </Button>
+                    <Button Content="{Binding AccountsNavLabel}"
+                            Tag="&#xE77B;"
                             Command="{Binding NavigateCommand}"
-                            CommandParameter="Accounts"/>
-                    <Button Content="Items"
-                            Style="{StaticResource NavButtonStyle}"
+                            CommandParameter="Accounts"
+                            ToolTip="{Binding AccountsNavLabel}">
+                        <Button.Style><Style TargetType="{x:Type Button}" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedPage}" Value="Accounts"><Setter Property="Background" Value="{DynamicResource AccentDarkBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                    </Button>
+                    <Button Content="{Binding ItemsNavLabel}"
+                            Tag="&#xE8EC;"
                             Command="{Binding NavigateCommand}"
-                            CommandParameter="Presets"/>
+                            CommandParameter="Presets"
+                            ToolTip="{Binding ItemsNavLabel}">
+                        <Button.Style><Style TargetType="{x:Type Button}" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedPage}" Value="Presets"><Setter Property="Background" Value="{DynamicResource AccentDarkBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                    </Button>
                     <Button Content="Settings"
-                            Style="{StaticResource NavButtonStyle}"
+                            Tag="&#xE713;"
                             Command="{Binding NavigateCommand}"
-                            CommandParameter="Settings"/>
+                            CommandParameter="Settings"
+                            ToolTip="Settings">
+                        <Button.Style><Style TargetType="{x:Type Button}" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedPage}" Value="Settings"><Setter Property="Background" Value="{DynamicResource AccentDarkBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                    </Button>
                 </StackPanel>
 
                 <Border DockPanel.Dock="Bottom"
@@ -1766,7 +1931,8 @@
                         BorderThickness="1"
                         CornerRadius="8"
                         Padding="12"
-                        Margin="0,16,0,0">
+                        Margin="0,16,0,0"
+                        Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolToVisibility}}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
@@ -1803,21 +1969,10 @@
                                             Command="{Binding ToggleQuickOrderCommand}"
                                             Tag="{Binding IsOrderEditorOpen}"
                                             Style="{StaticResource SidebarQuickActionButtonStyle}"/>
-                                    <Button Content="+ New account"
-                                            Command="{Binding ToggleQuickAccountPresetCommand}"
-                                            Tag="{Binding IsAccountPresetEditorOpen}"
-                                            Style="{StaticResource SidebarQuickActionButtonStyle}"/>
-                                    <Button Content="+ New item"
-                                            Command="{Binding ToggleQuickPresetCommand}"
-                                            Tag="{Binding IsPresetEditorOpen}"
-                                            Style="{StaticResource SidebarQuickActionButtonStyle}"/>
                                     <Button Content="Archive ready"
                                             Command="{Binding ArchiveCompletedOrdersCommand}"
                                             Style="{StaticResource SidebarActionButtonStyle}"
-                                            ToolTip="{Binding ArchiveCompletedOrdersLabel}"/>
-                                    <Button Content="Discord stats"
-                                            Command="{Binding SendDiscordStatsCommand}"
-                                            Style="{StaticResource SidebarActionButtonStyle}"
+                                            ToolTip="{Binding ArchiveCompletedOrdersLabel}"
                                             Margin="0"/>
                                 </StackPanel>
                             </ScrollViewer>
@@ -1846,15 +2001,22 @@
                                 BorderThickness="0,1,0,0"
                                 Padding="0,10,0,0"
                                 Margin="0,10,0,0">
-                            <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding SidebarDate}"
                                            Style="{StaticResource MutedTextStyle}"
-                                           TextTrimming="None"/>
-                                <TextBlock Text="{Binding SidebarTime}"
-                                           FontSize="20"
+                                           TextTrimming="None"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding SidebarTime}"
+                                           FontSize="12"
                                            FontWeight="SemiBold"
-                                           Margin="0,2,0,0"/>
-                            </StackPanel>
+                                           Margin="8,0,0,0"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                     </Grid>
                 </Border>
@@ -1884,6 +2046,28 @@
                                   VerticalScrollBarVisibility="Hidden"
                                   HorizontalScrollBarVisibility="Disabled">
                     <StackPanel x:Name="DashboardContent">
+                        <Border Style="{StaticResource DashboardChartCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Needs attention" Style="{StaticResource SectionTitleStyle}"/>
+                                <ItemsControl ItemsSource="{Binding SidebarAlerts}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="{x:Type ContentPresenter}">
+                                            <Setter Property="Width" Value="260"/>
+                                            <Setter Property="Margin" Value="0,0,10,0"/>
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource SidebarPanelItemTemplate}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
                         <ItemsControl ItemsSource="{Binding MetricCards}"
                                       Tag="{Binding ActualWidth, ElementName=DashboardContent}">
                             <ItemsControl.ItemsPanel>
@@ -1930,61 +2114,55 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
+                        <Border Style="{StaticResource DashboardChartCardStyle}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Spend and projected ROI" Style="{StaticResource SectionTitleStyle}" Margin="0"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                            <Border Width="10" Height="10" CornerRadius="5" Background="#5CC8FF" Margin="0,0,5,0"/>
+                                            <TextBlock Text="Spend" Style="{StaticResource MutedTextStyle}" Margin="0,0,14,0"/>
+                                            <Border Width="10" Height="10" CornerRadius="5" Background="#2F9E7E" Margin="0,0,5,0"/>
+                                            <TextBlock Text="Projected ROI" Style="{StaticResource MutedTextStyle}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1"
+                                              ItemsSource="{Binding DashboardMonthRangeOptions}"
+                                              SelectedItem="{Binding DashboardMonthRange}"
+                                              MinWidth="110">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate><TextBlock Text="{Binding StringFormat={}{0} months}"/></DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding MonthlyComparison}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,13">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="74"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="88"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="88"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
+                                                <ProgressBar Grid.Column="1" Value="{Binding SpendPercent}" Foreground="#5CC8FF" Style="{StaticResource ChartBarStyle}" Margin="0,0,10,0"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding SpendDisplay}" Style="{StaticResource ChartValueTextStyle}" Margin="0,0,16,0"/>
+                                                <ProgressBar Grid.Column="3" Value="{Binding RoiPercent}" Foreground="#2F9E7E" Style="{StaticResource ChartBarStyle}" Margin="0,0,10,0"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding RoiDisplay}" Style="{StaticResource ChartValueTextStyle}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
                         <WrapPanel>
-                            <Border Style="{StaticResource DashboardChartCardStyle}"
-                                    Width="{Binding ActualWidth, ElementName=DashboardContent, Converter={StaticResource ResponsiveItemWidth}, ConverterParameter=Chart}">
-                                <StackPanel>
-                                    <TextBlock Text="Monthly spend" Style="{StaticResource SectionTitleStyle}"/>
-                                    <ItemsControl ItemsSource="{Binding MonthlySpend}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="72"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="84"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
-                                                    <ProgressBar Grid.Column="1"
-                                                                 Value="{Binding Percent}"
-                                                                 Foreground="{Binding Accent}"
-                                                                 Style="{StaticResource ChartBarStyle}"
-                                                                 Margin="0,0,14,0"/>
-                                                    <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource DashboardChartCardStyle}"
-                                    Width="{Binding ActualWidth, ElementName=DashboardContent, Converter={StaticResource ResponsiveItemWidth}, ConverterParameter=Chart}">
-                                <StackPanel>
-                                    <TextBlock Text="Monthly projected ROI" Style="{StaticResource SectionTitleStyle}"/>
-                                    <ItemsControl ItemsSource="{Binding MonthlyProjectedRoi}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="72"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="84"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
-                                                    <ProgressBar Grid.Column="1"
-                                                                 Value="{Binding Percent}"
-                                                                 Foreground="{Binding Accent}"
-                                                                 Style="{StaticResource ChartBarStyle}"
-                                                                 Margin="0,0,14,0"/>
-                                                    <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-
                             <Border Style="{StaticResource DashboardChartCardStyle}"
                                     Width="{Binding ActualWidth, ElementName=DashboardContent, Converter={StaticResource ResponsiveItemWidth}, ConverterParameter=Chart}">
                                 <StackPanel>
@@ -2039,32 +2217,6 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource DashboardChartCardStyle}"
-                                    Width="{Binding ActualWidth, ElementName=DashboardContent, Converter={StaticResource ResponsiveItemWidth}, ConverterParameter=Chart}">
-                                <StackPanel>
-                                    <TextBlock Text="Yearly totals" Style="{StaticResource SectionTitleStyle}"/>
-                                    <ItemsControl ItemsSource="{Binding YearlySpend}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,0,11">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="70"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="80"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
-                                                    <ProgressBar Grid.Column="1"
-                                                                 Value="{Binding Percent}"
-                                                                 Foreground="{Binding Accent}"
-                                                                 Style="{StaticResource ChartBarStyle}"
-                                                                 Margin="0,0,12,0"/>
-                                                    <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
                         </WrapPanel>
                     </StackPanel>
                     </ScrollViewer>
@@ -2120,7 +2272,14 @@
                 <Grid Grid.Row="1" Margin="28,0,28,24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="{Binding Data.IsOrderEditorOpen, Source={StaticResource VmProxy}, Converter={StaticResource BoolToGridLength}, ConverterParameter=400}"/>
+                        <ColumnDefinition>
+                            <ColumnDefinition.Width>
+                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="400,1420">
+                                    <Binding RelativeSource="{RelativeSource AncestorType={x:Type Window}}" Path="ActualWidth"/>
+                                    <Binding Path="Data.IsOrderEditorOpen" Source="{StaticResource VmProxy}"/>
+                                </MultiBinding>
+                            </ColumnDefinition.Width>
+                        </ColumnDefinition>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -2142,11 +2301,13 @@
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="1.5*"/>
-                                <ColumnDefinition Width="150"/>
-                                <ColumnDefinition Width="170"/>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="160"/>
+                                <ColumnDefinition Width="160"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0"
+                            <TextBox x:Name="OrdersSearchBox"
+                                     Grid.Column="0"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource PlaceholderTextBoxStyle}"
                                      Tag="Search orders"
@@ -2155,40 +2316,35 @@
                             <ComboBox Grid.Column="1"
                                       ItemsSource="{Binding GroupOptions}"
                                       SelectedItem="{Binding SelectedGroup}"
-                                      Margin="0,0,10,0"/>
+                                      Margin="0,0,10,0">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
                             <ComboBox Grid.Column="2"
                                       ItemsSource="{Binding SortOptions}"
                                       SelectedItem="{Binding SelectedSort}"
-                                      Margin="0,0,10,0"/>
-                            <CheckBox Grid.Column="3"
+                                      Margin="0,0,10,0">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <ComboBox Grid.Column="3"
+                                      ItemsSource="{Binding AttentionFilterOptions}"
+                                      SelectedItem="{Binding SelectedAttentionFilter}"
+                                      Margin="0,0,10,0">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <CheckBox Grid.Column="4"
                                       Content="Hide completed"
                                       IsChecked="{Binding HideCompleted}"
                                       VerticalAlignment="Center"/>
                             <WrapPanel Grid.Row="1"
-                                       Grid.ColumnSpan="4"
+                                       Grid.ColumnSpan="5"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center">
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding HasSelectedActiveOrders, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{Binding ActiveOrderBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
                                            Margin="0,0,12,0"/>
-                                <Button Content="{Binding VisibleOrderItemsExpansionToggleLabel}"
-                                        Command="{Binding ToggleVisibleOrderItemsExpansionCommand}"
-                                        ToolTip="{Binding VisibleOrderItemsExpansionToggleToolTip}"
-                                        MinWidth="74"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Select"
-                                        Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=OrdersGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect"
-                                        Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=OrdersGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Select all"
-                                        Command="{Binding SelectVisibleOrdersCommand}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect all"
+                                <Button Content="Clear selection"
                                         Command="{Binding ClearSelectedOrdersCommand}"
                                         Style="{StaticResource BulkActionButtonStyle}"/>
                                 <Button Content="Mark completed"
@@ -2230,7 +2386,10 @@
                                         <Setter Property="Template">
                                             <Setter.Value>
                                                 <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                    <Grid>
+                                                        <ItemsPresenter Visibility="{Binding Data.ShowOrderGroupHeaders, Source={StaticResource VmProxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
                                                     <Expander IsExpanded="True"
+                                                              Visibility="{Binding Data.ShowOrderGroupHeaders, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"
                                                               Background="{DynamicResource SurfaceAltBrush}"
                                                               Foreground="{DynamicResource TextBrush}"
                                                               BorderBrush="{DynamicResource BorderBrush}"
@@ -2246,6 +2405,7 @@
                                                         </Expander.Header>
                                                         <ItemsPresenter/>
                                                     </Expander>
+                                                    </Grid>
                                                 </ControlTemplate>
                                             </Setter.Value>
                                         </Setter>
@@ -2338,7 +2498,7 @@
                                                     Width="0.7*"
                                                     MinWidth="64"
                                                     MaxWidth="92"
-                                                    Visibility="{Binding Data.Settings.Columns.ShowMerchant, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
+                                                    Visibility="{Binding Data.ShowOrderMerchantColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Grid VerticalAlignment="Center">
@@ -2408,6 +2568,15 @@
                                                     Width="Auto"
                                                     MinWidth="126"
                                                     Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
+                                <DataGridTemplateColumn.HeaderTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsThreeState="True"
+                                                  IsChecked="{Binding Data.AreAllVisibleOrdersSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
+                                                  AutomationProperties.Name="Select all visible orders"
+                                                  HorizontalAlignment="Center"
+                                                  Margin="0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Grid VerticalAlignment="Center">
@@ -2460,9 +2629,9 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Items"
-                                                    Width="0.55*"
-                                                    MinWidth="70"
-                                                    MaxWidth="90"
+                                                    Width="1.3*"
+                                                    MinWidth="140"
+                                                    MaxWidth="260"
                                                     Visibility="{Binding Data.Settings.Columns.ShowItem, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -2477,13 +2646,13 @@
                                             </Grid.ColumnDefinitions>
                                             <ToggleButton IsChecked="{Binding IsItemsExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           AutomationProperties.Name="Toggle item details"
-                                                          Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}"
+                                                          Visibility="{Binding HasMultipleItems, Converter={StaticResource BoolToVisibility}}"
                                                           Style="{StaticResource ExpandToggleButtonStyle}"
                                                           ToolTip="{Binding ItemsToolTip}"
                                                           Margin="0,0,6,0"/>
                                             <TextBlock Grid.Column="1"
-                                                       Text="{Binding ItemCountSummary}"
-                                                       Style="{StaticResource CompactCellTextStyle}"
+                                                       Text="{Binding ItemsSummary}"
+                                                       Style="{StaticResource CompactCellTextWithToolTipStyle}"
                                                        VerticalAlignment="Center"/>
                                         </Grid>
                                     </DataTemplate>
@@ -2505,16 +2674,16 @@
                                                     Visibility="{Binding Data.Settings.Columns.ShowStatus, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding Data.OrderStatuses, Source={StaticResource VmProxy}}"
-                                                  SelectedItem="{Binding Status, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  Background="{Binding Status, Converter={StaticResource StatusBrush}}"
-                                                  Foreground="{DynamicResource ChipTextBrush}"
-                                                  BorderBrush="Transparent"
-                                                  MinWidth="72"
-                                                  MinHeight="28"
-                                                  FontSize="11"
-                                                  Padding="5,2"
-                                                  ToolTip="Change status"/>
+                                        <Border Background="{Binding Status, Converter={StaticResource StatusBrush}}"
+                                                CornerRadius="7"
+                                                Padding="8,5"
+                                                HorizontalAlignment="Left"
+                                                ToolTip="Change status from Edit or More actions">
+                                            <TextBlock Text="{Binding Status, Converter={StaticResource EnumDisplay}}"
+                                                       Foreground="{DynamicResource ChipTextBrush}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="11.5"/>
+                                        </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -2557,9 +2726,21 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel>
-                                            <TextBlock Text="{Binding OrderDate, StringFormat='Ordered {0:M/d/yy}'}" Style="{StaticResource CompactCellTextStyle}"/>
-                                            <TextBlock Text="{Binding ExpectedDate, StringFormat='Expected {0:M/d/yy}'}" Style="{StaticResource OrderGridSubTextStyle}"/>
-                                            <TextBlock Text="{Binding DeliveredDate, StringFormat='Delivered {0:M/d/yy}'}" Style="{StaticResource OrderGridSubTextStyle}"/>
+                                            <TextBlock Text="{Binding PrimaryDateLabel}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CompactCellTextStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsOverdue}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding SecondaryDateLabel}"
+                                                       Style="{StaticResource OrderGridSubTextStyle}"
+                                                       Visibility="{Binding HasSecondaryDate, Converter={StaticResource BoolToVisibility}}"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2574,27 +2755,21 @@
                                                 Visibility="{Binding Data.Settings.Columns.ShowTotal, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
 
                             <DataGridTemplateColumn Header="Actions"
-                                                    Width="1.35*"
-                                                    MinWidth="150"
-                                                    MaxWidth="166"
+                                                    Width="1.15*"
+                                                    MinWidth="152"
+                                                    MaxWidth="180"
+                                                    CellStyle="{StaticResource ActionCellStyle}"
                                                     Visibility="{Binding Data.Settings.Columns.ShowActions, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
-                                            <Button Content="Edit"
-                                                    Command="{Binding Data.EditOrderCommand, Source={StaticResource VmProxy}}"
+                                            <Button Content="{Binding PrimaryActionLabel}"
+                                                    Command="{Binding Data.PrimaryOrderActionCommand, Source={StaticResource VmProxy}}"
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource GridActionButtonStyle}"
                                                     Margin="0,0,4,0"/>
-                                            <Button Content="Done"
-                                                    Command="{Binding Data.ToggleCompletedCommand, Source={StaticResource VmProxy}}"
-                                                    CommandParameter="{Binding}"
-                                                    Style="{StaticResource GridActionButtonStyle}"
-                                                    Margin="0,0,4,0"/>
-                                            <Button Content="Copy"
-                                                    Command="{Binding Data.CopyTrackingNumbersCommand, Source={StaticResource VmProxy}}"
-                                                    CommandParameter="{Binding}"
-                                                    Style="{StaticResource GridActionButtonStyle}"/>
+                                            <Button Style="{StaticResource OverflowActionButtonStyle}"
+                                                    Click="OpenRowContextMenu"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2621,8 +2796,12 @@
                         </Border>
                     </Grid>
 
-                    <Border Grid.Column="1"
+                    <Border Grid.Column="0"
+                            Grid.ColumnSpan="2"
                             Grid.RowSpan="2"
+                            Width="400"
+                            HorizontalAlignment="Right"
+                            Panel.ZIndex="10"
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
@@ -2661,14 +2840,16 @@
                                     <StackPanel>
                                         <TextBlock Text="Quick fill" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
                                         <TextBlock Text="Item" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                        <ComboBox ItemsSource="{Binding ItemPresets}"
+                                        <ComboBox ItemsSource="{Binding OrderItemPresetsView}"
                                                   DisplayMemberPath="Name"
-                                                  SelectedItem="{Binding SelectedOrderPreset}"/>
+                                                  SelectedItem="{Binding SelectedOrderPreset}"
+                                                  IsTextSearchEnabled="True"/>
 
                                         <TextBlock Text="Account preset" Style="{StaticResource FieldLabelStyle}"/>
                                         <ComboBox ItemsSource="{Binding OrderAccountPresetsView}"
                                                   DisplayMemberPath="DisplayName"
-                                                  SelectedItem="{Binding SelectedOrderAccountPreset}"/>
+                                                  SelectedItem="{Binding SelectedOrderAccountPreset}"
+                                                  IsTextSearchEnabled="True"/>
                                     </StackPanel>
                                 </Border>
 
@@ -2686,15 +2867,15 @@
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Text="Merchant" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding FormMerchant}"/>
+                                                <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding FormMerchant}">
+                                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                                </ComboBox>
                                             </StackPanel>
                                         </Grid>
 
                                         <TextBlock Text="Order number" Style="{StaticResource FieldLabelStyle}"/>
                                         <TextBox Text="{Binding FormOrderNumber, UpdateSourceTrigger=PropertyChanged}"/>
 
-                                        <TextBlock Text="Order link" Style="{StaticResource FieldLabelStyle}"/>
-                                        <TextBox Text="{Binding FormOrderLink, UpdateSourceTrigger=PropertyChanged}"/>
                                     </StackPanel>
                                 </Border>
 
@@ -2778,33 +2959,36 @@
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="108"/>
+                                                <ColumnDefinition Width="150"/>
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Shipping" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding FormShippingCostInput, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PlaceholderTextBoxStyle}"
-                                                         Tag="0.00"
-                                                         TextAlignment="Right"/>
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Order total" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                                <TextBlock Text="{Binding FormTotal, StringFormat={}{0:C}}"
+                                                           FontSize="20"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,6,0,0"/>
                                             </StackPanel>
-                                            <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Profit" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding FormProjectedProfitInput, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PlaceholderTextBoxStyle}"
-                                                         Tag="0.00"
-                                                         TextAlignment="Right"
-                                                         ToolTip="Overrides ROI percentage when set."/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="2">
+                                            <StackPanel Grid.Column="1">
                                                 <TextBlock Text="ROI override" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding FormProjectedRoiPercentInput, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PlaceholderTextBoxStyle}"
-                                                         Tag="Global"
-                                                         TextAlignment="Right"
-                                                         ToolTip="Blank uses merchant ROI. Ignored when profit is set."/>
+                                                <Grid>
+                                                    <TextBox Text="{Binding FormProjectedRoiPercentInput, UpdateSourceTrigger=PropertyChanged}"
+                                                             Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                             Tag="Global"
+                                                             Padding="9,7,25,7"
+                                                             TextAlignment="Right"
+                                                             ToolTip="Blank uses the merchant ROI default."/>
+                                                    <TextBlock Text="%"
+                                                               Style="{StaticResource MutedTextStyle}"
+                                                               HorizontalAlignment="Right"
+                                                               VerticalAlignment="Center"
+                                                               Margin="0,0,9,0"/>
+                                                </Grid>
                                             </StackPanel>
                                         </Grid>
+                                        <TextBlock Text="{Binding FormProjectionSummary}"
+                                                   Style="{StaticResource CaptionTextStyle}"
+                                                   Margin="0,10,0,0"/>
                                     </StackPanel>
                                 </Border>
 
@@ -2833,7 +3017,9 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                                 <TextBlock Text="Status" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <ComboBox ItemsSource="{Binding OrderStatuses}" SelectedItem="{Binding FormStatus}"/>
+                                                <ComboBox ItemsSource="{Binding OrderStatuses}" SelectedItem="{Binding FormStatus}">
+                                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                                </ComboBox>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Text="Delivered" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
@@ -2846,10 +3032,7 @@
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
                                         <TextBlock Text="Tracking" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
-                                        <TextBlock Text="Tracking status" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                        <TextBox Text="{Binding FormTrackingStatus, UpdateSourceTrigger=PropertyChanged}"/>
-
-                                        <TextBlock Text="Tracking numbers" Style="{StaticResource FieldLabelStyle}"/>
+                                        <TextBlock Text="Tracking numbers" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
                                         <TextBox Text="{Binding FormTrackingNumbersText, UpdateSourceTrigger=PropertyChanged}"
                                                  AcceptsReturn="True"
                                                  TextWrapping="Wrap"
@@ -2866,12 +3049,43 @@
                                 </Border>
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
+                                    <Expander Header="Advanced order fields" IsExpanded="{Binding IsOrderAdvancedOpen}">
+                                        <StackPanel Margin="0,10,0,0">
+                                            <TextBlock Text="Order link" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                            <TextBox Text="{Binding FormOrderLink, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                     Tag="Usually created automatically"/>
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Margin="0,0,8,0">
+                                                    <TextBlock Text="Shipping" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                                    <TextBox Text="{Binding FormShippingCostInput, UpdateSourceTrigger=PropertyChanged}"
+                                                             Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                             Tag="0.00"
+                                                             TextAlignment="Right"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="Profit override" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                                    <TextBox Text="{Binding FormProjectedProfitInput, UpdateSourceTrigger=PropertyChanged}"
+                                                             Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                             Tag="0.00"
+                                                             TextAlignment="Right"
+                                                             ToolTip="Overrides the ROI percentage when set."/>
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="Tracking status note" Style="{StaticResource FieldLabelStyle}"/>
+                                            <TextBox Text="{Binding FormTrackingStatus, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                     Tag="Optional manual status note"/>
+                                        </StackPanel>
+                                    </Expander>
+                                </Border>
+
+                                <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <Button Content="Save"
-                                                Command="{Binding SaveOrderCommand}"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                MinHeight="38"
-                                                Margin="0,0,0,8"/>
                                         <UniformGrid Columns="2" Margin="0,0,0,8">
                                             <Button Content="New"
                                                     Command="{Binding NewOrderCommand}"
@@ -2883,7 +3097,7 @@
                                                     Margin="4,0,0,0"/>
                                         </UniformGrid>
                                         <UniformGrid Columns="2">
-                                            <Button Content="Toggle completed"
+                                            <Button Content="Toggle delivered"
                                                     Command="{Binding ToggleCompletedCommand}"
                                                     CommandParameter="{Binding SelectedOrder}"
                                                     Style="{StaticResource OrderEditorFooterButtonStyle}"
@@ -2956,30 +3170,21 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
-                            <TextBox Grid.Row="0"
+                            <TextBox x:Name="ArchiveSearchBox"
+                                     Grid.Row="0"
                                      Text="{Binding ArchiveSearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource PlaceholderTextBoxStyle}"
                                      Tag="Search archived orders"
                                      ToolTip="Search archived orders"/>
                             <WrapPanel Grid.Row="1"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center">
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding HasSelectedArchivedOrders, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{Binding ArchivedOrderBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
                                            Margin="0,0,12,0"/>
-                                <Button Content="Select"
-                                        Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=ArchiveGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect"
-                                        Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=ArchiveGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Select all"
-                                        Command="{Binding SelectVisibleArchivedOrdersCommand}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect all"
+                                <Button Content="Clear selection"
                                         Command="{Binding ClearSelectedArchivedOrdersCommand}"
                                         Style="{StaticResource BulkActionButtonStyle}"/>
                                 <Button Content="Restore selected"
@@ -3097,6 +3302,15 @@
                                                         Width="Auto"
                                                         MinWidth="126"
                                                         Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
+                                    <DataGridTemplateColumn.HeaderTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsThreeState="True"
+                                                      IsChecked="{Binding Data.AreAllVisibleArchivedOrdersSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
+                                                      AutomationProperties.Name="Select all visible archived orders"
+                                                      HorizontalAlignment="Center"
+                                                      Margin="0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.HeaderTemplate>
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid VerticalAlignment="Center">
@@ -3149,14 +3363,14 @@
                                 </DataGridTemplateColumn>
 
                                 <DataGridTemplateColumn Header="Items"
-                                                        Width="0.55*"
-                                                        MinWidth="70"
-                                                        MaxWidth="90"
+                                                        Width="1.3*"
+                                                        MinWidth="140"
+                                                        MaxWidth="260"
                                                         Visibility="{Binding Data.Settings.Columns.ShowItem, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding ItemCountSummary}"
-                                                       Style="{StaticResource CompactCellTextStyle}"
+                                            <TextBlock Text="{Binding ItemsSummary}"
+                                                       Style="{StaticResource CompactCellTextWithToolTipStyle}"
                                                        VerticalAlignment="Center"
                                                        ToolTip="{Binding ItemsToolTip}"
                                                        ToolTipService.InitialShowDelay="0"
@@ -3178,7 +3392,7 @@
                                                         Width="0.9*"
                                                         MinWidth="88"
                                                         MaxWidth="112"
-                                                        Visibility="{Binding Data.Settings.Columns.ShowStatus, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
+                                                        Visibility="Collapsed">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Background="{Binding Status, Converter={StaticResource StatusBrush}}"
@@ -3220,8 +3434,10 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel>
-                                                <TextBlock Text="{Binding OrderDate, StringFormat='Ordered {0:M/d/yy}'}" Style="{StaticResource CompactCellTextStyle}"/>
-                                                <TextBlock Text="{Binding DeliveredDate, StringFormat='Delivered {0:M/d/yy}'}" Style="{StaticResource OrderGridSubTextStyle}"/>
+                                                <TextBlock Text="{Binding PrimaryDateLabel}" Style="{StaticResource CompactCellTextStyle}"/>
+                                                <TextBlock Text="{Binding SecondaryDateLabel}"
+                                                           Style="{StaticResource OrderGridSubTextStyle}"
+                                                           Visibility="{Binding HasSecondaryDate, Converter={StaticResource BoolToVisibility}}"/>
                                             </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -3236,9 +3452,10 @@
                                                     Visibility="{Binding Data.Settings.Columns.ShowTotal, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
 
                                 <DataGridTemplateColumn Header="Actions"
-                                                        Width="1.45*"
-                                                        MinWidth="166"
-                                                        MaxWidth="184"
+                                                        Width="1.0*"
+                                                        MinWidth="112"
+                                                        MaxWidth="142"
+                                                        CellStyle="{StaticResource ActionCellStyle}"
                                                         Visibility="{Binding Data.Settings.Columns.ShowActions, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -3248,15 +3465,8 @@
                                                         CommandParameter="{Binding}"
                                                         Style="{StaticResource GridActionButtonStyle}"
                                                         Margin="0,0,4,0"/>
-                                                <Button Content="Copy"
-                                                        Command="{Binding Data.CopyTrackingNumbersCommand, Source={StaticResource VmProxy}}"
-                                                        CommandParameter="{Binding}"
-                                                        Style="{StaticResource GridActionButtonStyle}"
-                                                        Margin="0,0,4,0"/>
-                                                <Button Content="Delete"
-                                                        Command="{Binding Data.DeleteOrderCommand, Source={StaticResource VmProxy}}"
-                                                        CommandParameter="{Binding}"
-                                                        Style="{StaticResource GridDangerActionButtonStyle}"/>
+                                                <Button Style="{StaticResource OverflowActionButtonStyle}"
+                                                        Click="OpenRowContextMenu"/>
                                             </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -3298,7 +3508,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <TextBlock Text="Accounts" Style="{StaticResource PageTitleStyle}"/>
-                        <TextBlock Text="Reusable account emails with merchant hints, notes, favorites, and usage counts." Style="{StaticResource MutedTextStyle}"/>
+                        <TextBlock Text="Account emails, merchant sessions, and linked order usage." Style="{StaticResource MutedTextStyle}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
                         <Button Content="New account" Command="{Binding NewAccountPresetCommand}" Margin="0,0,8,0"/>
@@ -3312,7 +3522,14 @@
                 <Grid Grid.Row="1" Margin="28,0,28,24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="{Binding Data.IsAccountPresetEditorOpen, Source={StaticResource VmProxy}, Converter={StaticResource BoolToGridLength}, ConverterParameter=380}"/>
+                        <ColumnDefinition>
+                            <ColumnDefinition.Width>
+                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="380,1380">
+                                    <Binding RelativeSource="{RelativeSource AncestorType={x:Type Window}}" Path="ActualWidth"/>
+                                    <Binding Path="Data.IsAccountPresetEditorOpen" Source="{StaticResource VmProxy}"/>
+                                </MultiBinding>
+                            </ColumnDefinition.Width>
+                        </ColumnDefinition>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -3337,7 +3554,8 @@
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="170"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Row="0"
+                            <TextBox x:Name="AccountsSearchBox"
+                                     Grid.Row="0"
                                      Grid.Column="0"
                                      Text="{Binding AccountPresetSearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource PlaceholderTextBoxStyle}"
@@ -3348,31 +3566,25 @@
                                       Grid.Column="1"
                                       ItemsSource="{Binding AccountGroupOptions}"
                                       SelectedItem="{Binding SelectedAccountGroup}"
-                                      Margin="0,0,10,0"/>
+                                      Margin="0,0,10,0">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
                             <ComboBox Grid.Row="0"
                                       Grid.Column="2"
                                       ItemsSource="{Binding AccountSortOptions}"
-                                      SelectedItem="{Binding SelectedAccountSort}"/>
+                                      SelectedItem="{Binding SelectedAccountSort}">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
                             <WrapPanel Grid.Row="1"
                                        Grid.ColumnSpan="3"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center">
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding HasSelectedAccountPresets, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{Binding AccountPresetBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
                                            Margin="0,0,12,0"/>
-                                <Button Content="Select"
-                                        Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=AccountsGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect"
-                                        Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=AccountsGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Select all"
-                                        Command="{Binding SelectVisibleAccountPresetsCommand}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect all"
+                                <Button Content="Clear selection"
                                         Command="{Binding ClearSelectedAccountPresetsCommand}"
                                         Style="{StaticResource BulkActionButtonStyle}"/>
                                 <Button Content="Delete selected"
@@ -3406,7 +3618,10 @@
                                                 <Setter Property="Template">
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                            <Grid>
+                                                                <ItemsPresenter Visibility="{Binding Data.ShowAccountGroupHeaders, Source={StaticResource VmProxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
                                                             <Expander IsExpanded="True"
+                                                                      Visibility="{Binding Data.ShowAccountGroupHeaders, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"
                                                                       Background="{DynamicResource SurfaceAltBrush}"
                                                                       Foreground="{DynamicResource TextBrush}"
                                                                       BorderBrush="{DynamicResource BorderBrush}"
@@ -3422,6 +3637,7 @@
                                                                 </Expander.Header>
                                                                 <ItemsPresenter/>
                                                             </Expander>
+                                                            </Grid>
                                                         </ControlTemplate>
                                                     </Setter.Value>
                                                 </Setter>
@@ -3431,6 +3647,15 @@
                                 </DataGrid.GroupStyle>
                                 <DataGrid.Columns>
                                     <DataGridTemplateColumn Header="" Width="Auto" MinWidth="34" MaxWidth="40">
+                                        <DataGridTemplateColumn.HeaderTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsThreeState="True"
+                                                          IsChecked="{Binding Data.AreAllVisibleAccountPresetsSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
+                                                          AutomationProperties.Name="Select all visible accounts"
+                                                          HorizontalAlignment="Center"
+                                                          Margin="0"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.HeaderTemplate>
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3473,11 +3698,13 @@
                                                         Width="Auto"
                                                         MinWidth="96"
                                                         MaxWidth="126"
-                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                                        ElementStyle="{StaticResource CellTextStyle}"
+                                                        Visibility="{Binding Data.ShowAccountMerchantColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
                                     <DataGridTemplateColumn Header="Fav"
                                                             Width="Auto"
                                                             MinWidth="52"
-                                                            MaxWidth="60">
+                                                            MaxWidth="60"
+                                                            Visibility="Collapsed">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3505,37 +3732,19 @@
                                     </DataGridTemplateColumn>
                                     <DataGridTemplateColumn Header="Actions"
                                                             Width="Auto"
-                                                            MinWidth="250"
-                                                            MaxWidth="402">
+                                                            MinWidth="132"
+                                                            MaxWidth="170"
+                                                            CellStyle="{StaticResource ActionCellStyle}">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Button Content="Edit"
-                                                            Command="{Binding Data.EditAccountPresetCommand, Source={StaticResource VmProxy}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource GridActionButtonStyle}"
-                                                            Margin="0,0,5,0"/>
-                                                    <Button Content="Apply"
-                                                            Command="{Binding Data.ApplyAccountPresetCommand, Source={StaticResource VmProxy}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource GridActionButtonStyle}"
-                                                            Margin="0,0,5,0"/>
                                                     <Button Content="View orders"
                                                             Command="{Binding Data.ViewAccountOrdersCommand, Source={StaticResource VmProxy}}"
                                                             CommandParameter="{Binding}"
                                                             Style="{StaticResource GridActionButtonStyle}"
                                                             Margin="0,0,5,0"/>
-                                                    <Button Content="Clear session"
-                                                            Command="{Binding Data.ClearAccountSessionCommand, Source={StaticResource VmProxy}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource GridDangerActionButtonStyle}"
-                                                            ToolTip="Requires account sessions and an account email."
-                                                            ToolTipService.ShowOnDisabled="True"
-                                                            Margin="0,0,5,0"/>
-                                                    <Button Content="Delete"
-                                                            Command="{Binding Data.DeleteAccountPresetCommand, Source={StaticResource VmProxy}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource GridDangerActionButtonStyle}"/>
+                                                    <Button Style="{StaticResource OverflowActionButtonStyle}"
+                                                            Click="OpenRowContextMenu"/>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
@@ -3562,8 +3771,12 @@
                         </Border>
                     </Grid>
 
-                    <Border Grid.Column="1"
+                    <Border Grid.Column="0"
+                            Grid.ColumnSpan="2"
                             Grid.RowSpan="2"
+                            Width="380"
+                            HorizontalAlignment="Right"
+                            Panel.ZIndex="10"
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
@@ -3608,31 +3821,28 @@
                                         <TextBox Text="{Binding AccountPresetEmail, UpdateSourceTrigger=PropertyChanged}"/>
 
                                         <TextBlock Text="Merchant hint" Style="{StaticResource FieldLabelStyle}"/>
-                                        <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding AccountPresetMerchantHint}"/>
+                                        <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding AccountPresetMerchantHint}">
+                                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                        </ComboBox>
                                     </StackPanel>
                                 </Border>
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
-                                    <StackPanel>
-                                        <TextBlock Text="Notes" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
-                                        <CheckBox Content="Favorite" IsChecked="{Binding AccountPresetIsFavorite}" Margin="0,0,0,10"/>
-
-                                        <TextBlock Text="Notes" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                        <TextBox Text="{Binding AccountPresetNotes, UpdateSourceTrigger=PropertyChanged}"
-                                                 AcceptsReturn="True"
-                                                 TextWrapping="Wrap"
-                                                 VerticalScrollBarVisibility="Auto"
-                                                 MinHeight="108"/>
-                                    </StackPanel>
+                                    <Expander Header="Advanced account fields" IsExpanded="{Binding IsAccountAdvancedOpen}">
+                                        <StackPanel Margin="0,10,0,0">
+                                            <CheckBox Content="Favorite" IsChecked="{Binding AccountPresetIsFavorite}" Margin="0,0,0,10"/>
+                                            <TextBlock Text="Notes" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                            <TextBox Text="{Binding AccountPresetNotes, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True"
+                                                     TextWrapping="Wrap"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     MinHeight="96"/>
+                                        </StackPanel>
+                                    </Expander>
                                 </Border>
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <Button Content="Save"
-                                                Command="{Binding SaveAccountPresetCommand}"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                MinHeight="38"
-                                                Margin="0,0,0,8"/>
                                         <UniformGrid Columns="2" Margin="0,0,0,8">
                                             <Button Content="New"
                                                     Command="{Binding NewAccountPresetCommand}"
@@ -3644,7 +3854,7 @@
                                                     Margin="4,0,0,0"/>
                                         </UniformGrid>
                                         <UniformGrid Columns="2" Margin="0,0,0,8">
-                                            <Button Content="Apply"
+                                            <Button Content="Use in order"
                                                     Command="{Binding ApplyAccountPresetCommand}"
                                                     CommandParameter="{Binding SelectedAccountPreset}"
                                                     Style="{StaticResource OrderEditorFooterButtonStyle}"
@@ -3708,7 +3918,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <TextBlock Text="Items" Style="{StaticResource PageTitleStyle}"/>
-                        <TextBlock Text="Reusable item templates with default quantities, costs, merchant hints, and notes." Style="{StaticResource MutedTextStyle}"/>
+                        <TextBlock Text="Frequently used products with default quantity, price, and merchant." Style="{StaticResource MutedTextStyle}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
                         <Button Content="New item" Command="{Binding NewPresetCommand}" Margin="0,0,8,0"/>
@@ -3722,7 +3932,14 @@
                 <Grid Grid.Row="1" Margin="28,0,28,24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="{Binding Data.IsPresetEditorOpen, Source={StaticResource VmProxy}, Converter={StaticResource BoolToGridLength}, ConverterParameter=380}"/>
+                        <ColumnDefinition>
+                            <ColumnDefinition.Width>
+                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="380,1380">
+                                    <Binding RelativeSource="{RelativeSource AncestorType={x:Type Window}}" Path="ActualWidth"/>
+                                    <Binding Path="Data.IsPresetEditorOpen" Source="{StaticResource VmProxy}"/>
+                                </MultiBinding>
+                            </ColumnDefinition.Width>
+                        </ColumnDefinition>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -3747,7 +3964,8 @@
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="190"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Row="0"
+                            <TextBox x:Name="ItemsSearchBox"
+                                     Grid.Row="0"
                                      Grid.Column="0"
                                      Text="{Binding PresetSearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource PlaceholderTextBoxStyle}"
@@ -3758,31 +3976,25 @@
                                       Grid.Column="1"
                                       ItemsSource="{Binding ItemGroupOptions}"
                                       SelectedItem="{Binding SelectedItemGroup}"
-                                      Margin="0,0,10,0"/>
+                                      Margin="0,0,10,0">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
                             <ComboBox Grid.Row="0"
                                       Grid.Column="2"
                                       ItemsSource="{Binding ItemSortOptions}"
-                                      SelectedItem="{Binding SelectedItemSort}"/>
+                                      SelectedItem="{Binding SelectedItemSort}">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
                             <WrapPanel Grid.Row="1"
                                        Grid.ColumnSpan="3"
                                        Margin="0,10,0,0"
-                                       VerticalAlignment="Center">
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding HasSelectedPresets, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{Binding PresetBulkSelectionSummary}"
                                            Style="{StaticResource MutedTextStyle}"
                                            VerticalAlignment="Center"
                                            Margin="0,0,12,0"/>
-                                <Button Content="Select"
-                                        Command="{x:Static local:MainWindow.SelectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=PresetsGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect"
-                                        Command="{x:Static local:MainWindow.UnselectHighlightedRowsCommand}"
-                                        CommandTarget="{Binding ElementName=PresetsGrid}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Select all"
-                                        Command="{Binding SelectVisiblePresetsCommand}"
-                                        Style="{StaticResource BulkActionButtonStyle}"/>
-                                <Button Content="Unselect all"
+                                <Button Content="Clear selection"
                                         Command="{Binding ClearSelectedPresetsCommand}"
                                         Style="{StaticResource BulkActionButtonStyle}"/>
                                 <Button Content="Delete selected"
@@ -3816,7 +4028,10 @@
                                                 <Setter Property="Template">
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                            <Grid>
+                                                                <ItemsPresenter Visibility="{Binding Data.ShowItemGroupHeaders, Source={StaticResource VmProxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
                                                             <Expander IsExpanded="True"
+                                                                      Visibility="{Binding Data.ShowItemGroupHeaders, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"
                                                                       Background="{DynamicResource SurfaceAltBrush}"
                                                                       Foreground="{DynamicResource TextBrush}"
                                                                       BorderBrush="{DynamicResource BorderBrush}"
@@ -3832,6 +4047,7 @@
                                                                 </Expander.Header>
                                                                 <ItemsPresenter/>
                                                             </Expander>
+                                                            </Grid>
                                                         </ControlTemplate>
                                                     </Setter.Value>
                                                 </Setter>
@@ -3841,6 +4057,15 @@
                                 </DataGrid.GroupStyle>
                                 <DataGrid.Columns>
                                     <DataGridTemplateColumn Header="" Width="Auto" MinWidth="34" MaxWidth="40">
+                                        <DataGridTemplateColumn.HeaderTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsThreeState="True"
+                                                          IsChecked="{Binding Data.AreAllVisiblePresetsSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
+                                                          AutomationProperties.Name="Select all visible items"
+                                                          HorizontalAlignment="Center"
+                                                          Margin="0"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.HeaderTemplate>
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3860,13 +4085,15 @@
                                                         Width="Auto"
                                                         MinWidth="100"
                                                         MaxWidth="180"
-                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                                        ElementStyle="{StaticResource CellTextStyle}"
+                                                        Visibility="Collapsed"/>
                                     <DataGridTextColumn Header="Merchant"
                                                         Binding="{Binding MerchantHint}"
                                                         Width="Auto"
                                                         MinWidth="96"
                                                         MaxWidth="126"
-                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                                        ElementStyle="{StaticResource CellTextStyle}"
+                                                        Visibility="{Binding Data.ShowItemMerchantColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
                                     <DataGridTextColumn Header="Qty"
                                                         Binding="{Binding DefaultQuantity}"
                                                         Width="Auto"
@@ -3882,7 +4109,8 @@
                                     <DataGridTemplateColumn Header="Fav"
                                                             Width="Auto"
                                                             MinWidth="52"
-                                                            MaxWidth="60">
+                                                            MaxWidth="60"
+                                                            Visibility="Collapsed">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3900,25 +4128,19 @@
                                                         ElementStyle="{StaticResource CellTextStyle}"/>
                                     <DataGridTemplateColumn Header="Actions"
                                                             Width="Auto"
-                                                            MinWidth="154"
-                                                            MaxWidth="226">
+                                                            MinWidth="112"
+                                                            MaxWidth="142"
+                                                            CellStyle="{StaticResource ActionCellStyle}">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Button Content="Edit"
-                                                            Command="{Binding Data.EditPresetCommand, Source={StaticResource VmProxy}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource GridActionButtonStyle}"
-                                                            Margin="0,0,5,0"/>
-                                                    <Button Content="Apply"
+                                                    <Button Content="Use"
                                                             Command="{Binding Data.ApplyPresetCommand, Source={StaticResource VmProxy}}"
                                                             CommandParameter="{Binding}"
                                                             Style="{StaticResource GridActionButtonStyle}"
                                                             Margin="0,0,5,0"/>
-                                                    <Button Content="Delete"
-                                                            Command="{Binding Data.DeletePresetCommand, Source={StaticResource VmProxy}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource GridDangerActionButtonStyle}"/>
+                                                    <Button Style="{StaticResource OverflowActionButtonStyle}"
+                                                            Click="OpenRowContextMenu"/>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
@@ -3945,8 +4167,12 @@
                         </Border>
                     </Grid>
 
-                    <Border Grid.Column="1"
+                    <Border Grid.Column="0"
+                            Grid.ColumnSpan="2"
                             Grid.RowSpan="2"
+                            Width="380"
+                            HorizontalAlignment="Right"
+                            Panel.ZIndex="10"
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
@@ -3984,20 +4210,8 @@
                                 <Border Style="{StaticResource OrderEditorFirstSectionStyle}">
                                     <StackPanel>
                                         <TextBlock Text="Item details" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Name" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding PresetName, UpdateSourceTrigger=PropertyChanged}"/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="Category" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding PresetCategory, UpdateSourceTrigger=PropertyChanged}"/>
-                                            </StackPanel>
-                                        </Grid>
+                                        <TextBlock Text="Name" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                        <TextBox Text="{Binding PresetName, UpdateSourceTrigger=PropertyChanged}"/>
 
                                         <Grid Margin="0,10,0,0">
                                             <Grid.ColumnDefinitions>
@@ -4006,7 +4220,9 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                                 <TextBlock Text="Merchant hint" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding PresetMerchantHint}"/>
+                                                <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding PresetMerchantHint}">
+                                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                                </ComboBox>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Text="Default qty" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
@@ -4021,59 +4237,46 @@
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <TextBlock Text="Default costs" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Price" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding PresetDefaultUnitPriceInput, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PlaceholderTextBoxStyle}"
-                                                         Tag="0.00"
-                                                         TextAlignment="Right"/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Shipping" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding PresetDefaultShippingInput, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PlaceholderTextBoxStyle}"
-                                                         Tag="0.00"
-                                                         TextAlignment="Right"/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Tax" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                                <TextBox Text="{Binding PresetDefaultTaxInput, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PlaceholderTextBoxStyle}"
-                                                         Tag="0.00"
-                                                         TextAlignment="Right"/>
-                                            </StackPanel>
-                                        </Grid>
+                                        <TextBlock Text="Default price" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
+                                        <TextBox Text="{Binding PresetDefaultUnitPriceInput, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                 Tag="0.00"
+                                                 TextAlignment="Right"/>
                                     </StackPanel>
                                 </Border>
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
-                                    <StackPanel>
-                                        <TextBlock Text="Notes" Style="{StaticResource OrderEditorSectionTitleStyle}"/>
-                                        <CheckBox Content="Favorite" IsChecked="{Binding PresetIsFavorite}" Margin="0,0,0,10"/>
-
-                                        <TextBlock Text="Notes" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
-                                        <TextBox Text="{Binding PresetNotes, UpdateSourceTrigger=PropertyChanged}"
-                                                 AcceptsReturn="True"
-                                                 TextWrapping="Wrap"
-                                                 VerticalScrollBarVisibility="Auto"
-                                                 MinHeight="108"/>
-                                    </StackPanel>
+                                    <Expander Header="Advanced item fields" IsExpanded="{Binding IsPresetAdvancedOpen}">
+                                        <StackPanel Margin="0,10,0,0">
+                                            <TextBlock Text="Category" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                            <TextBox Text="{Binding PresetCategory, UpdateSourceTrigger=PropertyChanged}"/>
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Margin="0,0,8,0">
+                                                    <TextBlock Text="Shipping" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                                    <TextBox Text="{Binding PresetDefaultShippingInput, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource PlaceholderTextBoxStyle}" Tag="0.00" TextAlignment="Right"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="Tax" Style="{StaticResource OrderEditorFieldLabelStyle}"/>
+                                                    <TextBox Text="{Binding PresetDefaultTaxInput, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource PlaceholderTextBoxStyle}" Tag="0.00" TextAlignment="Right"/>
+                                                </StackPanel>
+                                            </Grid>
+                                            <CheckBox Content="Favorite" IsChecked="{Binding PresetIsFavorite}" Margin="0,12,0,0"/>
+                                            <TextBlock Text="Notes" Style="{StaticResource FieldLabelStyle}"/>
+                                            <TextBox Text="{Binding PresetNotes, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True"
+                                                     TextWrapping="Wrap"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     MinHeight="96"/>
+                                        </StackPanel>
+                                    </Expander>
                                 </Border>
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <Button Content="Save"
-                                                Command="{Binding SavePresetCommand}"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                MinHeight="38"
-                                                Margin="0,0,0,8"/>
                                         <UniformGrid Columns="2" Margin="0,0,0,8">
                                             <Button Content="New"
                                                     Command="{Binding NewPresetCommand}"
@@ -4084,7 +4287,7 @@
                                                     Style="{StaticResource OrderEditorFooterButtonStyle}"
                                                     Margin="4,0,0,0"/>
                                         </UniformGrid>
-                                        <Button Content="Apply to current order"
+                                        <Button Content="Use in order"
                                                 Command="{Binding ApplyPresetCommand}"
                                                 CommandParameter="{Binding SelectedPreset}"
                                                 Style="{StaticResource OrderEditorFooterButtonStyle}"/>
@@ -4130,11 +4333,16 @@
                         <TextBlock Text="Settings" Style="{StaticResource PageTitleStyle}"/>
                         <TextBlock Text="Browser preference, Discord stats, defaults, storage, and visible order columns." Style="{StaticResource MutedTextStyle}"/>
                     </StackPanel>
-                    <Button Grid.Column="1"
-                            Content="Save settings"
-                            Command="{Binding SaveSettingsCommand}"
-                            Style="{StaticResource PrimaryButtonStyle}"
-                            VerticalAlignment="Bottom"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
+                        <TextBlock Text="{Binding SettingsSaveStatus}"
+                                   Style="{StaticResource MutedTextStyle}"
+                                   HorizontalAlignment="Right"
+                                   Visibility="{Binding Settings.AutoSave, Converter={StaticResource BoolToVisibility}}"/>
+                        <Button Content="Save settings"
+                                Command="{Binding SaveSettingsCommand}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Visibility="{Binding Settings.AutoSave, Converter={StaticResource InverseBoolToVisibility}}"/>
+                    </StackPanel>
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="28,0,28,24">
@@ -4167,13 +4375,21 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,7,0">
                                             <TextBlock Text="Theme" Style="{StaticResource FieldLabelStyle}"/>
-                                            <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Settings.Theme}"/>
+                                            <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Settings.Theme}">
+                                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                            </ComboBox>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                                             <TextBlock Text="Browser" Style="{StaticResource FieldLabelStyle}"/>
-                                            <ComboBox ItemsSource="{Binding BrowserOptions}" SelectedItem="{Binding Settings.BrowserPreference}"/>
+                                            <ComboBox ItemsSource="{Binding BrowserOptions}" SelectedItem="{Binding Settings.BrowserPreference}">
+                                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                            </ComboBox>
                                         </StackPanel>
                                     </Grid>
+                                    <TextBlock Text="List density" Style="{StaticResource FieldLabelStyle}"/>
+                                    <ComboBox ItemsSource="{Binding Densities}" SelectedItem="{Binding Settings.Density}" MaxWidth="240" HorizontalAlignment="Left">
+                                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                    </ComboBox>
                                     <TextBlock Text="Custom browser path" Style="{StaticResource FieldLabelStyle}"/>
                                     <TextBox Text="{Binding Settings.CustomBrowserPath, UpdateSourceTrigger=PropertyChanged}"
                                              Style="{StaticResource PlaceholderTextBoxStyle}"
@@ -4226,14 +4442,35 @@
                                                Margin="0,-4,0,10"/>
                                     <CheckBox Content="Enable Discord stats" IsChecked="{Binding Settings.DiscordEnabled}"/>
                                     <TextBlock Text="Webhook URL" Style="{StaticResource FieldLabelStyle}"/>
-                                    <TextBox Text="{Binding Settings.DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}"
-                                             Style="{StaticResource PlaceholderTextBoxStyle}"
-                                             Tag="https://discord.com/api/webhooks/..."/>
-                                    <Button Content="Send stats now"
-                                            Command="{Binding SendDiscordStatsCommand}"
-                                            HorizontalAlignment="Left"
-                                            MinWidth="140"
-                                            Margin="0,14,0,0"/>
+                                    <Grid>
+                                        <PasswordBox util:PasswordBoxAssist.BoundPassword="{Binding Settings.DiscordWebhookUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     Visibility="{Binding IsDiscordWebhookRevealed, Converter={StaticResource InverseBoolToVisibility}}"/>
+                                        <TextBox Text="{Binding Settings.DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource PlaceholderTextBoxStyle}"
+                                                 Tag="https://discord.com/api/webhooks/..."
+                                                 Visibility="{Binding IsDiscordWebhookRevealed, Converter={StaticResource BoolToVisibility}}"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding DiscordWebhookConfigurationStatus}"
+                                               Style="{StaticResource CaptionTextStyle}"
+                                               Margin="0,6,0,0"/>
+                                    <WrapPanel Margin="0,12,0,0">
+                                        <Button Content="{Binding DiscordWebhookRevealLabel}"
+                                                Command="{Binding ToggleDiscordWebhookRevealCommand}"
+                                                Style="{StaticResource BulkActionButtonStyle}"/>
+                                        <Button Content="Copy"
+                                                Command="{Binding CopyTextCommand}"
+                                                CommandParameter="{Binding Settings.DiscordWebhookUrl}"
+                                                Style="{StaticResource BulkActionButtonStyle}"/>
+                                        <Button Content="Clear"
+                                                Command="{Binding ClearDiscordWebhookCommand}"
+                                                Style="{StaticResource BulkDangerActionButtonStyle}"
+                                                Margin="0,0,8,6"/>
+                                        <Button Content="Send test"
+                                                Command="{Binding SendDiscordStatsCommand}"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                MinWidth="120"
+                                                Margin="0,0,0,6"/>
+                                    </WrapPanel>
                                 </StackPanel>
                             </Border>
 
@@ -4256,7 +4493,9 @@
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                                             <TextBlock Text="Default merchant" Style="{StaticResource FieldLabelStyle}"/>
-                                            <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding Settings.DefaultMerchant}"/>
+                                            <ComboBox ItemsSource="{Binding Merchants}" SelectedItem="{Binding Settings.DefaultMerchant}">
+                                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                            </ComboBox>
                                         </StackPanel>
                                     </Grid>
                                     <CheckBox Content="Auto-save changes" IsChecked="{Binding Settings.AutoSave}" Margin="0,14,0,0"/>
@@ -4286,8 +4525,8 @@
                         <StackPanel Grid.Column="1">
                             <Border Style="{StaticResource SettingsCardStyle}">
                                 <StackPanel>
-                                    <TextBlock Text="Orders list columns" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock Text="Toggle visible columns without changing your data."
+                                    <TextBlock Text="Orders and Archive columns" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="Toggle shared columns. Archive always uses its delivered-date view."
                                                Style="{StaticResource CaptionTextStyle}"
                                                Margin="0,0,0,10"/>
                                     <UniformGrid Columns="2">
@@ -4311,37 +4550,36 @@
                                     <TextBlock Text="Merchant defaults used by dashboard projections and blank order overrides."
                                                Style="{StaticResource CaptionTextStyle}"
                                                Margin="0,-4,0,10"/>
-                                    <ItemsControl ItemsSource="{Binding Settings.MerchantProjectedRoiPercents}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Background="{DynamicResource SurfaceAltBrush}"
-                                                        BorderBrush="{DynamicResource BorderBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="7"
-                                                        Padding="10,7"
-                                                        Margin="0,0,0,8">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="72"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding Merchant}"
-                                                                   Style="{StaticResource MutedTextStyle}"
-                                                                   VerticalAlignment="Center"/>
-                                                        <TextBox Grid.Column="1"
-                                                                 Text="{Binding ProjectedRoiPercent, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.##}}"
-                                                                 HorizontalContentAlignment="Right"
-                                                                 Margin="10,0,6,0"/>
-                                                        <TextBlock Grid.Column="2"
-                                                                   Text="%"
-                                                                   Style="{StaticResource MutedTextStyle}"
-                                                                   VerticalAlignment="Center"/>
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                    <ItemsControl ItemsSource="{Binding ActiveMerchantRoiSettings}"
+                                                  ItemTemplate="{StaticResource MerchantRoiSettingTemplate}"/>
+                                    <Expander Header="Other merchants" Margin="0,4,0,0">
+                                        <ItemsControl ItemsSource="{Binding InactiveMerchantRoiSettings}"
+                                                      ItemTemplate="{StaticResource MerchantRoiSettingTemplate}"
+                                                      Margin="0,10,0,0"/>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="Work faster without leaving the list." Style="{StaticResource CaptionTextStyle}" Margin="0,-4,0,10"/>
+                                    <Grid Margin="0,3">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Search current page"/><TextBlock Grid.Column="1" Text="Ctrl+F" Style="{StaticResource MutedTextStyle}"/>
+                                    </Grid>
+                                    <Grid Margin="0,3">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="New order"/><TextBlock Grid.Column="1" Text="Ctrl+N" Style="{StaticResource MutedTextStyle}"/>
+                                    </Grid>
+                                    <Grid Margin="0,3">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Save open editor"/><TextBlock Grid.Column="1" Text="Ctrl+S or Ctrl+Enter" Style="{StaticResource MutedTextStyle}"/>
+                                    </Grid>
+                                    <Grid Margin="0,3">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Close open editor"/><TextBlock Grid.Column="1" Text="Esc" Style="{StaticResource MutedTextStyle}"/>
+                                    </Grid>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

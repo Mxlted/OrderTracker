@@ -27,6 +27,20 @@ public enum AppTheme
     OLED
 }
 
+public enum UiDensity
+{
+    Comfortable,
+    Compact
+}
+
+public enum OrderAttentionFilter
+{
+    All,
+    Overdue,
+    MissingTracking,
+    ReadyToArchive
+}
+
 public enum CarrierKind
 {
     Unknown,

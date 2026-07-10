@@ -20,12 +20,16 @@ public sealed class AppSettings : ObservableObject
     private MerchantKind _defaultMerchant = MerchantKind.Unknown;
     private bool _autoSave = true;
     private AppTheme _theme = AppTheme.Dark;
+    private UiDensity _density = UiDensity.Comfortable;
+    private bool _isSidebarCollapsed;
+    private int _dashboardMonthRange = 3;
+    private int _uiExperienceVersion;
     private OrderGroupOption _orderGroup = OrderGroupOption.None;
     private OrderSortOption _orderSort = OrderSortOption.NewestFirst;
     private AccountGroupOption _accountGroup = AccountGroupOption.None;
     private AccountSortOption _accountSort = AccountSortOption.NameAscending;
     private ItemGroupOption _itemGroup = ItemGroupOption.None;
-    private ItemSortOption _itemSort = ItemSortOption.NameAscending;
+    private ItemSortOption _itemSort = ItemSortOption.MostUsed;
     private double _windowWidth;
     private double _windowHeight;
     private double? _windowLeft;
@@ -100,6 +104,30 @@ public sealed class AppSettings : ObservableObject
     {
         get => _orderGroup;
         set => SetProperty(ref _orderGroup, value);
+    }
+
+    public UiDensity Density
+    {
+        get => _density;
+        set => SetProperty(ref _density, value);
+    }
+
+    public bool IsSidebarCollapsed
+    {
+        get => _isSidebarCollapsed;
+        set => SetProperty(ref _isSidebarCollapsed, value);
+    }
+
+    public int DashboardMonthRange
+    {
+        get => _dashboardMonthRange;
+        set => SetProperty(ref _dashboardMonthRange, value is 3 or 6 or 12 ? value : 3);
+    }
+
+    public int UiExperienceVersion
+    {
+        get => _uiExperienceVersion;
+        set => SetProperty(ref _uiExperienceVersion, Math.Max(0, value));
     }
 
     public OrderSortOption OrderSort

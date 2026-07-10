@@ -20,12 +20,13 @@ public sealed class AppDataStore
             new MerchantKindJsonConverter(),
             new SafeEnumJsonConverter<BrowserPreference>(BrowserPreference.Default),
             new SafeEnumJsonConverter<AppTheme>(AppTheme.Dark),
+            new SafeEnumJsonConverter<UiDensity>(UiDensity.Comfortable),
             new SafeEnumJsonConverter<OrderGroupOption>(OrderGroupOption.None),
             new SafeEnumJsonConverter<AccountGroupOption>(AccountGroupOption.None),
             new SafeEnumJsonConverter<ItemGroupOption>(ItemGroupOption.None),
             new SafeEnumJsonConverter<OrderSortOption>(OrderSortOption.NewestFirst),
             new SafeEnumJsonConverter<AccountSortOption>(AccountSortOption.NameAscending),
-            new SafeEnumJsonConverter<ItemSortOption>(ItemSortOption.NameAscending),
+            new SafeEnumJsonConverter<ItemSortOption>(ItemSortOption.MostUsed),
             new SafeEnumJsonConverter<OrderStatus>(OrderStatus.Ordered),
             new SafeEnumJsonConverter<CarrierKind>(CarrierKind.Unknown),
             new JsonStringEnumConverter()
@@ -89,6 +90,11 @@ public sealed class AppDataStore
     {
         data.Settings ??= new AppSettings();
         data.Settings.Columns ??= new ColumnSettings();
+        if (data.Settings.UiExperienceVersion < 1)
+        {
+            data.Settings.ItemSort = ItemSortOption.MostUsed;
+            data.Settings.UiExperienceVersion = 1;
+        }
         NormalizeMerchantProjectedRoiPercents(data.Settings);
         data.Orders ??= new();
         data.AccountPresets ??= new();

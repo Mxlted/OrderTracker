@@ -195,6 +195,8 @@ public sealed class Order : ObservableObject
             {
                 OnPropertyChanged(nameof(OrderMonth));
                 OnPropertyChanged(nameof(OrderYear));
+                OnPropertyChanged(nameof(PrimaryDateLabel));
+                OnPropertyChanged(nameof(SecondaryDateLabel));
             }
         }
     }
@@ -207,6 +209,10 @@ public sealed class Order : ObservableObject
             if (SetProperty(ref _expectedDate, value))
             {
                 OnPropertyChanged(nameof(ExpectedSortDate));
+                OnPropertyChanged(nameof(PrimaryDateLabel));
+                OnPropertyChanged(nameof(SecondaryDateLabel));
+                OnPropertyChanged(nameof(HasSecondaryDate));
+                OnPropertyChanged(nameof(IsOverdue));
             }
         }
     }
@@ -214,7 +220,15 @@ public sealed class Order : ObservableObject
     public DateTime? DeliveredDate
     {
         get => _deliveredDate;
-        set => SetProperty(ref _deliveredDate, value);
+        set
+        {
+            if (SetProperty(ref _deliveredDate, value))
+            {
+                OnPropertyChanged(nameof(PrimaryDateLabel));
+                OnPropertyChanged(nameof(SecondaryDateLabel));
+                OnPropertyChanged(nameof(HasSecondaryDate));
+            }
+        }
     }
 
     public OrderStatus Status
@@ -225,6 +239,11 @@ public sealed class Order : ObservableObject
             if (SetProperty(ref _status, value))
             {
                 OnPropertyChanged(nameof(IsCompleted));
+                OnPropertyChanged(nameof(PrimaryActionLabel));
+                OnPropertyChanged(nameof(PrimaryDateLabel));
+                OnPropertyChanged(nameof(SecondaryDateLabel));
+                OnPropertyChanged(nameof(HasSecondaryDate));
+                OnPropertyChanged(nameof(IsOverdue));
             }
         }
     }
@@ -410,6 +429,27 @@ public sealed class Order : ObservableObject
 
     [JsonIgnore]
     public bool IsCompleted => Status == OrderStatus.Delivered;
+
+    [JsonIgnore]
+    public string PrimaryActionLabel => Status == OrderStatus.Delivered ? "Archive" : "Mark delivered";
+
+    [JsonIgnore]
+    public bool IsOverdue => !IsCompleted && ExpectedDate?.Date < DateTime.Today;
+
+    [JsonIgnore]
+    public string PrimaryDateLabel => Status == OrderStatus.Delivered && DeliveredDate.HasValue
+        ? $"Delivered {DeliveredDate.Value:M/d/yy}"
+        : ExpectedDate.HasValue
+            ? $"Expected {ExpectedDate.Value:M/d/yy}"
+            : $"Ordered {OrderDate:M/d/yy}";
+
+    [JsonIgnore]
+    public string SecondaryDateLabel => PrimaryDateLabel.StartsWith("Ordered", StringComparison.Ordinal)
+        ? string.Empty
+        : $"Ordered {OrderDate:M/d/yy}";
+
+    [JsonIgnore]
+    public bool HasSecondaryDate => !string.IsNullOrWhiteSpace(SecondaryDateLabel);
 
     [JsonIgnore]
     public string OrderMonth => OrderDate.ToString("yyyy MMMM");
