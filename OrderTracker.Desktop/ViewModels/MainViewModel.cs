@@ -187,10 +187,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             setting.PropertyChanged += MerchantProjectedRoiSettingPropertyChanged;
         }
 
-        NavigateCommand = new RelayCommand(parameter => Navigate(parameter?.ToString()));
+        NavigateCommand = new RelayCommand(parameter => Navigate(parameter?.ToString()), _ => !HasOpenModal);
         ToggleSidebarCommand = new RelayCommand(_ => Settings.IsSidebarCollapsed = !Settings.IsSidebarCollapsed);
         NewOrderCommand = new RelayCommand(_ => RequestNewOrder(), _ => !HasOpenModal);
-        ToggleQuickOrderCommand = new RelayCommand(_ => ToggleQuickOrder());
+        ToggleQuickOrderCommand = new RelayCommand(_ => ToggleQuickOrder(), _ => !HasOpenModal);
         EditOrderCommand = new RelayCommand(parameter => RequestEditOrder(parameter as Order), parameter => parameter is Order && !HasOpenModal);
         SaveOrderCommand = new RelayCommand(_ => SaveOrder(), _ => CanSaveOrder);
         CloseOrderEditorCommand = new RelayCommand(_ => CloseOrderEditor(), _ => IsOrderEditorOpen && !HasOpenModal);
@@ -220,7 +220,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CopyTextCommand = new RelayCommand(CopyText, HasTextToCopy);
         AddOrderItemCommand = new RelayCommand(_ => AddFormItem());
         RemoveOrderItemCommand = new RelayCommand(parameter => RemoveFormItem(parameter as OrderItem), parameter => parameter is OrderItem && FormItems.Count > 1);
-        ApplyOrderAttentionFilterCommand = new RelayCommand(ApplyOrderAttentionFilter);
+        ApplyOrderAttentionFilterCommand = new RelayCommand(ApplyOrderAttentionFilter, _ => !HasOpenModal);
         ClearOrderAttentionFilterCommand = new RelayCommand(_ => SelectedAttentionFilter = OrderAttentionFilter.All, _ => HasAttentionFilter);
         SaveSettingsCommand = new RelayCommand(_ => SaveNow("Settings saved."));
         ToggleDiscordWebhookRevealCommand = new RelayCommand(_ => IsDiscordWebhookRevealed = !IsDiscordWebhookRevealed);
@@ -232,7 +232,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CancelDialogCommand = new RelayCommand(_ => CancelDialog(), _ => IsConfirmationOpen);
 
         NewAccountPresetCommand = new RelayCommand(_ => RequestNewAccountPreset(), _ => !HasOpenModal);
-        ToggleQuickAccountPresetCommand = new RelayCommand(_ => ToggleQuickAccountPreset());
+        ToggleQuickAccountPresetCommand = new RelayCommand(_ => ToggleQuickAccountPreset(), _ => !HasOpenModal);
         EditAccountPresetCommand = new RelayCommand(parameter => RequestEditAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset && !HasOpenModal);
         SaveAccountPresetCommand = new RelayCommand(_ => SaveAccountPreset(), _ => CanSaveAccountPreset);
         CloseAccountPresetEditorCommand = new RelayCommand(_ => CloseAccountPresetEditor(), _ => IsAccountPresetEditorOpen && !HasOpenModal);
@@ -249,7 +249,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OpenAccountUsageOrderCommand = new RelayCommand(parameter => OpenAccountUsageOrder(parameter as Order), parameter => parameter is Order);
 
         NewPresetCommand = new RelayCommand(_ => RequestNewPreset(), _ => !HasOpenModal);
-        ToggleQuickPresetCommand = new RelayCommand(_ => ToggleQuickPreset());
+        ToggleQuickPresetCommand = new RelayCommand(_ => ToggleQuickPreset(), _ => !HasOpenModal);
         EditPresetCommand = new RelayCommand(parameter => RequestEditPreset(parameter as ItemPreset), parameter => parameter is ItemPreset && !HasOpenModal);
         SavePresetCommand = new RelayCommand(_ => SavePreset(), _ => CanSavePreset);
         ClosePresetEditorCommand = new RelayCommand(_ => ClosePresetEditor(), _ => IsPresetEditorOpen && !HasOpenModal);
@@ -2474,15 +2474,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void CloseCurrentPanel()
     {
-        if (IsConfirmationOpen)
-        {
-            CancelDialog();
-            return;
-        }
-
         if (IsAccountUsageAuditOpen)
         {
             CloseAccountUsageAudit();
+            return;
+        }
+
+        if (IsConfirmationOpen)
+        {
+            CancelDialog();
             return;
         }
 
@@ -5556,11 +5556,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(CanSaveCurrent));
         OnPropertyChanged(nameof(CanCloseCurrentPanel));
+        ((RelayCommand)NavigateCommand).RaiseCanExecuteChanged();
         ((RelayCommand)NewOrderCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ToggleQuickOrderCommand).RaiseCanExecuteChanged();
         ((RelayCommand)EditOrderCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ApplyOrderAttentionFilterCommand).RaiseCanExecuteChanged();
         ((RelayCommand)NewAccountPresetCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ToggleQuickAccountPresetCommand).RaiseCanExecuteChanged();
         ((RelayCommand)EditAccountPresetCommand).RaiseCanExecuteChanged();
         ((RelayCommand)NewPresetCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ToggleQuickPresetCommand).RaiseCanExecuteChanged();
         ((RelayCommand)EditPresetCommand).RaiseCanExecuteChanged();
         ((RelayCommand)SaveCurrentCommand).RaiseCanExecuteChanged();
         ((RelayCommand)CloseCurrentPanelCommand).RaiseCanExecuteChanged();
