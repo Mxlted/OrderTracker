@@ -8,6 +8,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using OrderTracker.Desktop.Models;
+using OrderTracker.Desktop.Utilities;
 
 namespace OrderTracker.Desktop.Services;
 
@@ -152,7 +153,7 @@ public sealed class BrowserLauncher
                 sessionDirectory,
                 settings,
                 BuildWindowKey(browserPath, sessionDirectory, uri),
-                $"Opened {sessionContext.Merchant} for {accountName} in {browserName} account session.");
+                $"Opened {EnumDisplayFormatter.Format(sessionContext.Merchant)} for {accountName} in {browserName} account session.");
         }
         catch (Exception ex)
         {

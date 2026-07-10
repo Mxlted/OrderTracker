@@ -3151,7 +3151,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             LastActionMessage = preset is null
                 ? "Select an account before viewing order history."
-                : $"Account order history is not available for {preset.MerchantHint}.";
+                : $"Account order history is not available for {EnumDisplayFormatter.Format(preset.MerchantHint)}.";
             return;
         }
 
@@ -3173,7 +3173,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (!preset.SupportsIsolatedBrowserSession)
         {
-            LastActionMessage = $"Browser sessions are not available for {preset.MerchantHint}.";
+            LastActionMessage = $"Browser sessions are not available for {EnumDisplayFormatter.Format(preset.MerchantHint)}.";
             return;
         }
 
@@ -4541,12 +4541,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             })
             .ToList();
 
-        var maxSpend = points.Max(point => point.Spend);
-        var maxRoi = points.Max(point => point.ProjectedRoi);
+        var sharedMaximum = Math.Max(
+            0m,
+            points.Max(point => Math.Max(point.Spend, point.ProjectedRoi)));
         foreach (var point in points)
         {
-            point.SpendPercent = maxSpend <= 0m ? 0d : (double)(point.Spend / maxSpend * 100m);
-            point.RoiPercent = maxRoi <= 0m ? 0d : (double)(point.ProjectedRoi / maxRoi * 100m);
+            point.SpendPercent = sharedMaximum <= 0m ? 0d : (double)(point.Spend / sharedMaximum * 100m);
+            point.RoiPercent = sharedMaximum <= 0m ? 0d : (double)(point.ProjectedRoi / sharedMaximum * 100m);
         }
 
         return points;
@@ -4675,7 +4676,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 var value = group.Sum(order => order.TotalCost);
                 return new ChartPoint
                 {
-                    Label = group.Key.ToString(),
+                    Label = EnumDisplayFormatter.Format(group.Key),
                     Value = value,
                     DisplayValue = value.ToString("C0", CultureInfo.CurrentCulture),
                     Accent = GetMerchantAccent(group.Key)
@@ -4697,7 +4698,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 var count = orders.Count(order => order.Status == status);
                 return new ChartPoint
                 {
-                    Label = FormatStatusLabel(status),
+                    Label = EnumDisplayFormatter.Format(status),
                     Value = count,
                     DisplayValue = count.ToString(CultureInfo.CurrentCulture),
                     Accent = GetStatusAccent(status)
@@ -4726,15 +4727,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             point.Percent = totalOrders <= 0 ? 0 : Math.Max(6, (double)(point.Value / totalOrders * 100));
         }
-    }
-
-    private static string FormatStatusLabel(OrderStatus status)
-    {
-        return status switch
-        {
-            OrderStatus.OutForDelivery => "Out for delivery",
-            _ => status.ToString()
-        };
     }
 
     private static string GetStatusAccent(OrderStatus status)
@@ -4895,7 +4887,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var details = new List<string>();
         if (order.Merchant != MerchantKind.Unknown)
         {
-            details.Add(order.Merchant.ToString());
+            details.Add(EnumDisplayFormatter.Format(order.Merchant));
         }
 
         if (!usedItemAsAnchor && !string.IsNullOrWhiteSpace(primaryItem))
@@ -4929,7 +4921,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (preset.MerchantHint != MerchantKind.Unknown)
         {
-            details.Add(preset.MerchantHint.ToString());
+            details.Add(EnumDisplayFormatter.Format(preset.MerchantHint));
         }
 
         return details.Count == 0
@@ -4951,7 +4943,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (preset.MerchantHint != MerchantKind.Unknown)
         {
-            details.Add(preset.MerchantHint.ToString());
+            details.Add(EnumDisplayFormatter.Format(preset.MerchantHint));
         }
 
         return details.Count == 0
@@ -5448,7 +5440,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 FormStatus = orderWithStatus.Status;
             }
 
-            LastActionMessage = $"Order status changed to {orderWithStatus.Status}.";
+            LastActionMessage = $"Order status changed to {EnumDisplayFormatter.Format(orderWithStatus.Status)}.";
         }
 
         RefreshAccountUsageCounts();

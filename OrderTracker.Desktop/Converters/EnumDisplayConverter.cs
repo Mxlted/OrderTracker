@@ -1,7 +1,7 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using System.Windows.Data;
 using OrderTracker.Desktop.Models;
+using OrderTracker.Desktop.Utilities;
 
 namespace OrderTracker.Desktop.Converters;
 
@@ -41,7 +41,7 @@ public sealed partial class EnumDisplayConverter : IValueConverter
             OrderAttentionFilter.ReadyToArchive => "Ready to archive",
             UiDensity.Comfortable => "Comfortable",
             UiDensity.Compact => "Compact",
-            Enum enumValue => SplitPascalCase().Replace(enumValue.ToString(), "$1 $2"),
+            Enum enumValue => EnumDisplayFormatter.Format(enumValue),
             _ => value?.ToString() ?? string.Empty
         };
     }
@@ -50,7 +50,4 @@ public sealed partial class EnumDisplayConverter : IValueConverter
     {
         throw new NotSupportedException();
     }
-
-    [GeneratedRegex("([a-z0-9])([A-Z])")]
-    private static partial Regex SplitPascalCase();
 }

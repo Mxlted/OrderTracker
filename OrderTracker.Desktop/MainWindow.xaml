@@ -36,6 +36,8 @@
         <SolidColorBrush x:Key="RowHoverBrush" Color="#24282E"/>
         <SolidColorBrush x:Key="RowSelectedBrush" Color="#1F3D57"/>
         <SolidColorBrush x:Key="ProgressTrackBrush" Color="#181A1E"/>
+        <SolidColorBrush x:Key="ChartSpendBrush" Color="#5CC8FF"/>
+        <SolidColorBrush x:Key="ChartRoiBrush" Color="#2F9E7E"/>
         <SolidColorBrush x:Key="ScrollBarTrackBrush" Color="#1E2227"/>
         <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#6A7482"/>
         <SolidColorBrush x:Key="ScrollBarThumbHoverBrush" Color="#8793A3"/>
@@ -49,6 +51,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
         <conv:BoolToGridLengthConverter x:Key="BoolToGridLength"/>
         <conv:StatusBrushConverter x:Key="StatusBrush"/>
+        <conv:ChartAccentBrushConverter x:Key="ChartAccentBrush"/>
         <conv:MerchantBrushConverter x:Key="MerchantBrush"/>
         <conv:MerchantFaviconConverter x:Key="MerchantFavicon"/>
         <conv:ResponsiveItemWidthConverter x:Key="ResponsiveItemWidth"/>
@@ -2171,9 +2174,9 @@
                                     <StackPanel>
                                         <TextBlock Text="Spend and projected ROI" Style="{StaticResource SectionTitleStyle}" Margin="0"/>
                                         <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                            <Border Width="10" Height="10" CornerRadius="5" Background="#5CC8FF" Margin="0,0,5,0"/>
+                                            <Border Width="10" Height="10" CornerRadius="5" Background="{DynamicResource ChartSpendBrush}" Margin="0,0,5,0"/>
                                             <TextBlock Text="Spend" Style="{StaticResource MutedTextStyle}" Margin="0,0,14,0"/>
-                                            <Border Width="10" Height="10" CornerRadius="5" Background="#2F9E7E" Margin="0,0,5,0"/>
+                                            <Border Width="10" Height="10" CornerRadius="5" Background="{DynamicResource ChartRoiBrush}" Margin="0,0,5,0"/>
                                             <TextBlock Text="Projected ROI" Style="{StaticResource MutedTextStyle}"/>
                                         </StackPanel>
                                     </StackPanel>
@@ -2198,14 +2201,18 @@
                                                     <ColumnDefinition Width="88"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
-                                                <ProgressBar Grid.Column="1" Value="{Binding SpendPercent}" Foreground="#5CC8FF" Style="{StaticResource ChartBarStyle}" Margin="0,0,10,0"/>
+                                                <ProgressBar Grid.Column="1" Value="{Binding SpendPercent}" Foreground="{DynamicResource ChartSpendBrush}" Style="{StaticResource ChartBarStyle}" Margin="0,0,10,0"/>
                                                 <TextBlock Grid.Column="2" Text="{Binding SpendDisplay}" Style="{StaticResource ChartValueTextStyle}" Margin="0,0,16,0"/>
-                                                <ProgressBar Grid.Column="3" Value="{Binding RoiPercent}" Foreground="#2F9E7E" Style="{StaticResource ChartBarStyle}" Margin="0,0,10,0"/>
+                                                <ProgressBar Grid.Column="3" Value="{Binding RoiPercent}" Foreground="{DynamicResource ChartRoiBrush}" Style="{StaticResource ChartBarStyle}" Margin="0,0,10,0"/>
                                                 <TextBlock Grid.Column="4" Text="{Binding RoiDisplay}" Style="{StaticResource ChartValueTextStyle}"/>
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                <TextBlock Text="Bars share one dollar scale; exact monthly amounts are shown beside each bar."
+                                           Style="{StaticResource MutedTextStyle}"
+                                           FontSize="11"
+                                           Margin="0,1,0,0"/>
                             </StackPanel>
                         </Border>
 
@@ -2226,9 +2233,15 @@
                                                     <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
                                                     <ProgressBar Grid.Column="1"
                                                                  Value="{Binding Percent}"
-                                                                 Foreground="{Binding Accent}"
                                                                  Style="{StaticResource ChartBarStyle}"
-                                                                 Margin="0,0,12,0"/>
+                                                                 Margin="0,0,12,0">
+                                                        <ProgressBar.Foreground>
+                                                            <MultiBinding Converter="{StaticResource ChartAccentBrush}">
+                                                                <Binding Path="Accent"/>
+                                                                <Binding Path="Data.Settings.Theme" Source="{StaticResource VmProxy}"/>
+                                                            </MultiBinding>
+                                                        </ProgressBar.Foreground>
+                                                    </ProgressBar>
                                                     <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
                                                 </Grid>
                                             </DataTemplate>
@@ -2253,9 +2266,15 @@
                                                     <TextBlock Text="{Binding Label}" Style="{StaticResource MutedTextStyle}" VerticalAlignment="Center"/>
                                                     <ProgressBar Grid.Column="1"
                                                                  Value="{Binding Percent}"
-                                                                 Foreground="{Binding Accent}"
                                                                  Style="{StaticResource ChartBarStyle}"
-                                                                 Margin="0,0,12,0"/>
+                                                                 Margin="0,0,12,0">
+                                                        <ProgressBar.Foreground>
+                                                            <MultiBinding Converter="{StaticResource ChartAccentBrush}">
+                                                                <Binding Path="Accent"/>
+                                                                <Binding Path="Data.Settings.Theme" Source="{StaticResource VmProxy}"/>
+                                                            </MultiBinding>
+                                                        </ProgressBar.Foreground>
+                                                    </ProgressBar>
                                                     <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" Style="{StaticResource ChartValueTextStyle}"/>
                                                 </Grid>
                                             </DataTemplate>
@@ -2443,7 +2462,7 @@
                                                               Padding="10,8">
                                                         <Expander.Header>
                                                             <StackPanel Orientation="Horizontal">
-                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                                <TextBlock Text="{Binding Name, Converter={StaticResource EnumDisplay}}" FontWeight="SemiBold"/>
                                                                 <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}"
                                                                            Foreground="{DynamicResource MutedTextBrush}"
                                                                            Margin="6,0,0,0"/>
@@ -2612,7 +2631,7 @@
                                                 </Grid>
                                             </Border>
                                             <TextBlock Grid.Column="1"
-                                                       Text="{Binding Merchant}"
+                                                       Text="{Binding Merchant, Converter={StaticResource EnumDisplay}}"
                                                        Style="{StaticResource CompactCellTextStyle}"
                                                        VerticalAlignment="Center"/>
                                         </Grid>
@@ -2723,15 +2742,26 @@
                                                     Visibility="{Binding Data.Settings.Columns.ShowStatus, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <Border Background="{Binding Status, Converter={StaticResource StatusBrush}}"
-                                                CornerRadius="7"
+                                        <Border CornerRadius="7"
                                                 Padding="8,5"
                                                 HorizontalAlignment="Left"
                                                 ToolTip="Change status from Edit or More actions">
+                                            <Border.Background>
+                                                <MultiBinding Converter="{StaticResource StatusBrush}">
+                                                    <Binding Path="Status"/>
+                                                    <Binding Path="Data.Settings.Theme" Source="{StaticResource VmProxy}"/>
+                                                </MultiBinding>
+                                            </Border.Background>
                                             <TextBlock Text="{Binding Status, Converter={StaticResource EnumDisplay}}"
-                                                       Foreground="{DynamicResource ChipTextBrush}"
                                                        FontWeight="SemiBold"
-                                                       FontSize="11.5"/>
+                                                       FontSize="11.5">
+                                                <TextBlock.Foreground>
+                                                    <MultiBinding Converter="{StaticResource StatusBrush}" ConverterParameter="Foreground">
+                                                        <Binding Path="Status"/>
+                                                        <Binding Path="Data.Settings.Theme" Source="{StaticResource VmProxy}"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Foreground>
+                                            </TextBlock>
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -3350,7 +3380,7 @@
                                                     </Grid>
                                                 </Border>
                                                 <TextBlock Grid.Column="1"
-                                                           Text="{Binding Merchant}"
+                                                           Text="{Binding Merchant, Converter={StaticResource EnumDisplay}}"
                                                            Style="{StaticResource CompactCellTextStyle}"
                                                            VerticalAlignment="Center"/>
                                             </Grid>
@@ -3438,26 +3468,6 @@
                                                     Binding="{Binding TotalQuantity, Mode=OneWay}"
                                                     ElementStyle="{StaticResource CompactCellTextStyle}"
                                                     Visibility="{Binding Data.Settings.Columns.ShowQuantity, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
-
-                                <DataGridTemplateColumn Header="Status"
-                                                        Width="0.9*"
-                                                        MinWidth="88"
-                                                        MaxWidth="112"
-                                                        Visibility="Collapsed">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{Binding Status, Converter={StaticResource StatusBrush}}"
-                                                    CornerRadius="7"
-                                                    Padding="6,4"
-                                                    HorizontalAlignment="Left">
-                                                <TextBlock Text="{Binding Status}"
-                                                           Foreground="{DynamicResource ChipTextBrush}"
-                                                           FontWeight="SemiBold"
-                                                           FontSize="11.5"/>
-                                            </Border>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
 
                                 <DataGridTemplateColumn Header="Tracking"
                                                         Width="Auto"
@@ -3681,7 +3691,7 @@
                                                                       Padding="10,8">
                                                                 <Expander.Header>
                                                                     <StackPanel Orientation="Horizontal">
-                                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                                        <TextBlock Text="{Binding Name, Converter={StaticResource EnumDisplay}}" FontWeight="SemiBold"/>
                                                                         <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}"
                                                                                    Foreground="{DynamicResource MutedTextBrush}"
                                                                                    Margin="6,0,0,0"/>
@@ -3747,26 +3757,12 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="Merchant"
-                                                        Binding="{Binding MerchantHint}"
+                                                        Binding="{Binding MerchantHint, Converter={StaticResource EnumDisplay}}"
                                                         Width="Auto"
                                                         MinWidth="96"
                                                         MaxWidth="126"
                                                         ElementStyle="{StaticResource CellTextStyle}"
                                                         Visibility="{Binding Data.ShowAccountMerchantColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}"/>
-                                    <DataGridTemplateColumn Header="Fav"
-                                                            Width="Auto"
-                                                            MinWidth="52"
-                                                            MaxWidth="60"
-                                                            Visibility="Collapsed">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          AutomationProperties.Name="Favorite account preset"
-                                                          HorizontalAlignment="Center"
-                                                          Margin="0"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
                                     <DataGridTemplateColumn Header="Used"
                                                             Width="Auto"
                                                             MinWidth="58"
@@ -4091,7 +4087,7 @@
                                                                       Padding="10,8">
                                                                 <Expander.Header>
                                                                     <StackPanel Orientation="Horizontal">
-                                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                                        <TextBlock Text="{Binding Name, Converter={StaticResource EnumDisplay}}" FontWeight="SemiBold"/>
                                                                         <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}"
                                                                                    Foreground="{DynamicResource MutedTextBrush}"
                                                                                    Margin="6,0,0,0"/>
@@ -4133,15 +4129,8 @@
                                                         Width="Auto"
                                                         MinWidth="140"
                                                         ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTextColumn Header="Category"
-                                                        Binding="{Binding Category}"
-                                                        Width="Auto"
-                                                        MinWidth="100"
-                                                        MaxWidth="180"
-                                                        ElementStyle="{StaticResource CellTextStyle}"
-                                                        Visibility="Collapsed"/>
                                     <DataGridTextColumn Header="Merchant"
-                                                        Binding="{Binding MerchantHint}"
+                                                        Binding="{Binding MerchantHint, Converter={StaticResource EnumDisplay}}"
                                                         Width="Auto"
                                                         MinWidth="96"
                                                         MaxWidth="126"
@@ -4159,20 +4148,6 @@
                                                         MinWidth="74"
                                                         MaxWidth="96"
                                                         ElementStyle="{StaticResource CellTextStyle}"/>
-                                    <DataGridTemplateColumn Header="Fav"
-                                                            Width="Auto"
-                                                            MinWidth="52"
-                                                            MaxWidth="60"
-                                                            Visibility="Collapsed">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <CheckBox IsChecked="{Binding IsFavorite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          AutomationProperties.Name="Favorite item"
-                                                          HorizontalAlignment="Center"
-                                                          Margin="0"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="Saved uses"
                                                         Binding="{Binding UsageCount}"
                                                         Width="Auto"
@@ -4575,7 +4550,7 @@
                             <Border Style="{StaticResource SettingsCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="Orders and Archive columns" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock Text="Toggle shared columns. Archive always uses its delivered-date view."
+                                    <TextBlock Text="Most toggles apply to both pages. Status controls Orders only; Archive hides status and always uses its delivered-date view."
                                                Style="{StaticResource CaptionTextStyle}"
                                                Margin="0,0,0,10"/>
                                     <UniformGrid Columns="2">
@@ -4584,7 +4559,7 @@
                                         <CheckBox Content="Order number" IsChecked="{Binding Settings.Columns.ShowOrderNumber}"/>
                                         <CheckBox Content="Items" IsChecked="{Binding Settings.Columns.ShowItem}"/>
                                         <CheckBox Content="Quantity" IsChecked="{Binding Settings.Columns.ShowQuantity}"/>
-                                        <CheckBox Content="Status" IsChecked="{Binding Settings.Columns.ShowStatus}"/>
+                                        <CheckBox Content="Status (Orders only)" IsChecked="{Binding Settings.Columns.ShowStatus}"/>
                                         <CheckBox Content="Tracking" IsChecked="{Binding Settings.Columns.ShowTracking}"/>
                                         <CheckBox Content="Dates" IsChecked="{Binding Settings.Columns.ShowDates}"/>
                                         <CheckBox Content="Total" IsChecked="{Binding Settings.Columns.ShowTotal}"/>
@@ -4738,14 +4713,14 @@
                                                                Foreground="{DynamicResource TextBrush}"
                                                                TextTrimming="CharacterEllipsis"
                                                                ToolTip="{Binding AccountEmail}"/>
-                                                    <TextBlock Text="{Binding Merchant}"
+                                                    <TextBlock Text="{Binding Merchant, Converter={StaticResource EnumDisplay}}"
                                                                Style="{StaticResource MutedTextStyle}"
                                                                FontSize="11"/>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2" Margin="0,0,12,0">
                                                     <TextBlock Text="{Binding OrderDate, StringFormat='Ordered {0:M/d/yy}'}"
                                                                Foreground="{DynamicResource TextBrush}"/>
-                                                    <TextBlock Text="{Binding Status}"
+                                                    <TextBlock Text="{Binding Status, Converter={StaticResource EnumDisplay}}"
                                                                Style="{StaticResource MutedTextStyle}"
                                                                FontSize="11"/>
                                                 </StackPanel>

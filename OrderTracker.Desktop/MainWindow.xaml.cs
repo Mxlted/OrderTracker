@@ -68,6 +68,8 @@ public partial class MainWindow : Window
         ["RowHoverBrush"] = ("#E6F4FB", "#24282E", "#141414"),
         ["RowSelectedBrush"] = ("#CFEAF7", "#1F3D57", "#06263A"),
         ["ProgressTrackBrush"] = ("#DDE6EF", "#181A1E", "#101010"),
+        ["ChartSpendBrush"] = ("#0078B8", "#5CC8FF", "#00B7F0"),
+        ["ChartRoiBrush"] = ("#168765", "#2F9E7E", "#33D69F"),
         ["ScrollBarTrackBrush"] = ("#D9E3EE", "#1E2227", "#151515"),
         ["ScrollBarThumbBrush"] = ("#7E91A8", "#6A7482", "#565656"),
         ["ScrollBarThumbHoverBrush"] = ("#5F758E", "#8793A3", "#787878"),
