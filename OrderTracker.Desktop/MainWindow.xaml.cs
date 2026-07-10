@@ -41,11 +41,6 @@ public partial class MainWindow : Window
         nameof(UnselectHighlightedRowsCommand),
         typeof(MainWindow));
 
-    public static readonly RoutedUICommand CopyHighlightedTrackingNumbersCommand = new(
-        "Copy tracking numbers",
-        nameof(CopyHighlightedTrackingNumbersCommand),
-        typeof(MainWindow));
-
     public static readonly RoutedUICommand FocusSearchCommand = new(
         "Focus search",
         nameof(FocusSearchCommand),
@@ -95,10 +90,6 @@ public partial class MainWindow : Window
             UnselectHighlightedRowsCommand,
             UnselectHighlightedRowsExecuted,
             CanToggleHighlightedRowsSelection));
-        CommandBindings.Add(new CommandBinding(
-            CopyHighlightedTrackingNumbersCommand,
-            CopyHighlightedTrackingNumbersExecuted,
-            CanCopyHighlightedTrackingNumbers));
         CommandBindings.Add(new CommandBinding(
             FocusSearchCommand,
             FocusSearchExecuted,
@@ -311,7 +302,8 @@ public partial class MainWindow : Window
 
     private void CanFocusSearch(object sender, CanExecuteRoutedEventArgs e)
     {
-        e.CanExecute = _viewModel.SelectedPage is AppPage.Orders or AppPage.Archive or AppPage.Accounts or AppPage.Presets;
+        e.CanExecute = !_viewModel.HasOpenModal &&
+            (_viewModel.SelectedPage is AppPage.Orders or AppPage.Archive or AppPage.Accounts or AppPage.Presets);
         e.Handled = true;
     }
 
@@ -812,26 +804,6 @@ public partial class MainWindow : Window
         SetHighlightedRowsSelection(e, false);
     }
 
-    private void CanCopyHighlightedTrackingNumbers(object sender, CanExecuteRoutedEventArgs e)
-    {
-        e.CanExecute = GetCommandOrders(e).Count > 0;
-        e.Handled = true;
-    }
-
-    private void CopyHighlightedTrackingNumbersExecuted(object sender, ExecutedRoutedEventArgs e)
-    {
-        var orders = GetCommandOrders(e);
-        if (orders.Count == 0)
-        {
-            _viewModel.LastActionMessage = "Highlight or select orders first, then copy tracking numbers.";
-            e.Handled = true;
-            return;
-        }
-
-        _viewModel.CopyTrackingNumbers(orders);
-        e.Handled = true;
-    }
-
     private void SetHighlightedRowsSelection(ExecutedRoutedEventArgs e, bool isSelected)
     {
         var grid = GetCommandGrid(e);
@@ -872,28 +844,6 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-    }
-
-    private static List<Order> GetCommandOrders(RoutedEventArgs e)
-    {
-        var grid = GetCommandGrid(e);
-        var fallback = GetCommandItem(e) as Order;
-        var orders = new List<Order>();
-
-        if (grid is not null)
-        {
-            orders.AddRange(grid.SelectedItems.Cast<object>().OfType<Order>());
-            orders.AddRange(grid.Items.Cast<object>().OfType<Order>().Where(order => order.IsSelected));
-        }
-
-        if (orders.Count == 0 && fallback is not null)
-        {
-            orders.Add(fallback);
-        }
-
-        return orders
-            .Distinct()
-            .ToList();
     }
 
     private static bool IsInteractiveElement(DependencyObject? source)

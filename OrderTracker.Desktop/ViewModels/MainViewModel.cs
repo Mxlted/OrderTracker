@@ -189,11 +189,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         NavigateCommand = new RelayCommand(parameter => Navigate(parameter?.ToString()));
         ToggleSidebarCommand = new RelayCommand(_ => Settings.IsSidebarCollapsed = !Settings.IsSidebarCollapsed);
-        NewOrderCommand = new RelayCommand(_ => BeginNewOrder());
+        NewOrderCommand = new RelayCommand(_ => RequestNewOrder(), _ => !HasOpenModal);
         ToggleQuickOrderCommand = new RelayCommand(_ => ToggleQuickOrder());
-        EditOrderCommand = new RelayCommand(parameter => BeginEditOrder(parameter as Order), parameter => parameter is Order);
+        EditOrderCommand = new RelayCommand(parameter => RequestEditOrder(parameter as Order), parameter => parameter is Order && !HasOpenModal);
         SaveOrderCommand = new RelayCommand(_ => SaveOrder(), _ => CanSaveOrder);
-        CloseOrderEditorCommand = new RelayCommand(_ => CloseOrderEditor(), _ => IsOrderEditorOpen);
+        CloseOrderEditorCommand = new RelayCommand(_ => CloseOrderEditor(), _ => IsOrderEditorOpen && !HasOpenModal);
         DeleteOrderCommand = new RelayCommand(parameter => DeleteOrder(parameter as Order), parameter => parameter is Order);
         DuplicateOrderCommand = new RelayCommand(parameter => DuplicateOrder(parameter as Order), parameter => parameter is Order);
         ToggleCompletedCommand = new RelayCommand(
@@ -231,11 +231,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ConfirmDialogCommand = new RelayCommand(_ => ConfirmDialog(), _ => IsConfirmationOpen);
         CancelDialogCommand = new RelayCommand(_ => CancelDialog(), _ => IsConfirmationOpen);
 
-        NewAccountPresetCommand = new RelayCommand(_ => BeginNewAccountPreset());
+        NewAccountPresetCommand = new RelayCommand(_ => RequestNewAccountPreset(), _ => !HasOpenModal);
         ToggleQuickAccountPresetCommand = new RelayCommand(_ => ToggleQuickAccountPreset());
-        EditAccountPresetCommand = new RelayCommand(parameter => BeginEditAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
+        EditAccountPresetCommand = new RelayCommand(parameter => RequestEditAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset && !HasOpenModal);
         SaveAccountPresetCommand = new RelayCommand(_ => SaveAccountPreset(), _ => CanSaveAccountPreset);
-        CloseAccountPresetEditorCommand = new RelayCommand(_ => CloseAccountPresetEditor(), _ => IsAccountPresetEditorOpen);
+        CloseAccountPresetEditorCommand = new RelayCommand(_ => CloseAccountPresetEditor(), _ => IsAccountPresetEditorOpen && !HasOpenModal);
         DeleteAccountPresetCommand = new RelayCommand(parameter => DeleteAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         DuplicateAccountPresetCommand = new RelayCommand(parameter => DuplicateAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
@@ -248,11 +248,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloseAccountUsageAuditCommand = new RelayCommand(_ => CloseAccountUsageAudit());
         OpenAccountUsageOrderCommand = new RelayCommand(parameter => OpenAccountUsageOrder(parameter as Order), parameter => parameter is Order);
 
-        NewPresetCommand = new RelayCommand(_ => BeginNewPreset());
+        NewPresetCommand = new RelayCommand(_ => RequestNewPreset(), _ => !HasOpenModal);
         ToggleQuickPresetCommand = new RelayCommand(_ => ToggleQuickPreset());
-        EditPresetCommand = new RelayCommand(parameter => BeginEditPreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
+        EditPresetCommand = new RelayCommand(parameter => RequestEditPreset(parameter as ItemPreset), parameter => parameter is ItemPreset && !HasOpenModal);
         SavePresetCommand = new RelayCommand(_ => SavePreset(), _ => CanSavePreset);
-        ClosePresetEditorCommand = new RelayCommand(_ => ClosePresetEditor(), _ => IsPresetEditorOpen);
+        ClosePresetEditorCommand = new RelayCommand(_ => ClosePresetEditor(), _ => IsPresetEditorOpen && !HasOpenModal);
         DeletePresetCommand = new RelayCommand(parameter => DeletePreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         DuplicatePresetCommand = new RelayCommand(parameter => DuplicatePreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
         ApplyPresetCommand = new RelayCommand(parameter => ApplyPreset(parameter as ItemPreset), parameter => parameter is ItemPreset);
@@ -528,6 +528,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _selectedPage;
         set
         {
+            CloseEditorsExcept(value);
             if (SetProperty(ref _selectedPage, value))
             {
                 RefreshCurrentCommandState();
@@ -634,6 +635,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string AttentionFilterSummary => SelectedAttentionFilter switch
     {
         OrderAttentionFilter.Overdue => "Showing orders past their expected date",
+        OrderAttentionFilter.ExpectedToday => "Showing open orders expected today",
         OrderAttentionFilter.MissingTracking => "Showing open orders without tracking",
         OrderAttentionFilter.ReadyToArchive => "Showing delivered orders ready to archive",
         _ => "All active orders"
@@ -826,7 +828,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string OrderEditorTitle => IsEditingOrder ? "Edit order" : "New order";
 
-    public bool CanSaveOrder => IsOrderEditorOpen && FormItems.Any(item => !string.IsNullOrWhiteSpace(item.Name));
+    public bool CanSaveOrder => IsOrderEditorOpen && !HasOpenModal && FormItems.Any(item => !string.IsNullOrWhiteSpace(item.Name));
 
     public bool IsOrderAdvancedOpen
     {
@@ -1128,7 +1130,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string PresetEditorTitle => IsEditingPreset ? "Edit item" : "New item";
 
-    public bool CanSavePreset => IsPresetEditorOpen && !string.IsNullOrWhiteSpace(PresetName);
+    public bool CanSavePreset => IsPresetEditorOpen && !HasOpenModal && !string.IsNullOrWhiteSpace(PresetName);
 
     public bool IsPresetAdvancedOpen
     {
@@ -1280,7 +1282,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string AccountPresetEditorTitle => IsEditingAccountPreset ? "Edit account" : "New account";
 
-    public bool CanSaveAccountPreset => IsAccountPresetEditorOpen && !string.IsNullOrWhiteSpace(AccountPresetEmail);
+    public bool CanSaveAccountPreset => IsAccountPresetEditorOpen && !HasOpenModal && !string.IsNullOrWhiteSpace(AccountPresetEmail);
 
     public bool IsAccountAdvancedOpen
     {
@@ -1346,7 +1348,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 ((RelayCommand)ConfirmDialogCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)CancelDialogCommand).RaiseCanExecuteChanged();
-                RefreshCurrentCommandState();
+                OnPropertyChanged(nameof(HasOpenModal));
+                RefreshEditorCommandState();
             }
         }
     }
@@ -1388,10 +1391,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _isAccountUsageAuditOpen, value))
             {
-                RefreshCurrentCommandState();
+                OnPropertyChanged(nameof(HasOpenModal));
+                RefreshEditorCommandState();
             }
         }
     }
+
+    public bool HasOpenModal => IsConfirmationOpen || IsAccountUsageAuditOpen;
 
     public string AccountUsageAuditTitle => _accountUsageAuditPreset is null
         ? "Account usage"
@@ -1419,6 +1425,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _isDiscordWebhookRevealed, value))
             {
                 OnPropertyChanged(nameof(DiscordWebhookRevealLabel));
+                OnPropertyChanged(nameof(DiscordWebhookConfigurationStatus));
             }
         }
     }
@@ -1427,7 +1434,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string DiscordWebhookConfigurationStatus => string.IsNullOrWhiteSpace(Settings.DiscordWebhookUrl)
         ? "No webhook configured."
-        : "Webhook configured and hidden.";
+        : IsDiscordWebhookRevealed
+            ? "Webhook configured and revealed."
+            : "Webhook configured and hidden.";
 
     public string SettingsSaveStatus
     {
@@ -1449,16 +1458,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool CanSaveCurrent => SelectedPage switch
-    {
-        AppPage.Orders => CanSaveOrder,
-        AppPage.Accounts => CanSaveAccountPreset,
-        AppPage.Presets => CanSavePreset,
-        AppPage.Settings => !Settings.AutoSave,
-        _ => false
-    };
+    public bool CanSaveCurrent => !HasOpenModal &&
+        (SelectedPage switch
+        {
+            AppPage.Orders => CanSaveOrder,
+            AppPage.Accounts => CanSaveAccountPreset,
+            AppPage.Presets => CanSavePreset,
+            AppPage.Settings => !Settings.AutoSave,
+            _ => false
+        });
 
-    public bool CanCloseCurrentPanel => IsConfirmationOpen || IsAccountUsageAuditOpen || IsOrderEditorOpen || IsAccountPresetEditorOpen || IsPresetEditorOpen;
+    public bool CanCloseCurrentPanel => HasOpenModal || GetVisibleEditorPage().HasValue;
 
     public int MerchantIconCacheVersion
     {
@@ -1683,8 +1693,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (Enum.TryParse<AppPage>(page, out var parsed))
         {
-            SelectedPage = parsed;
+            if (parsed == SelectedPage)
+            {
+                return;
+            }
+
+            RequestEditorTransition(
+                parsed,
+                $"navigate to {GetPageDisplayName(parsed)}",
+                () => SelectedPage = parsed);
         }
+    }
+
+    private void RequestNewOrder()
+    {
+        RequestEditorTransition(AppPage.Orders, "open a new order", BeginNewOrder, replaceCurrentEditor: true);
+    }
+
+    private void RequestEditOrder(Order? order)
+    {
+        if (order is null)
+        {
+            return;
+        }
+
+        RequestEditorTransition(AppPage.Orders, "edit another order", () => BeginEditOrder(order), replaceCurrentEditor: true);
     }
 
     private void MigrateLegacyOrderItems()
@@ -1724,14 +1757,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ToggleQuickOrder()
     {
-        if (IsOrderEditorOpen)
+        if (GetVisibleEditorPage() == AppPage.Orders)
         {
             CloseOrderEditor();
             LastActionMessage = "Order panel closed.";
             return;
         }
 
-        BeginNewOrder();
+        RequestNewOrder();
     }
 
     private void ResetOrderForm()
@@ -1993,6 +2026,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RequestEditorTransition(
+            AppPage.Orders,
+            "duplicate the selected order",
+            () => DuplicateOrderCore(order),
+            replaceCurrentEditor: IsOrderEditorOpen);
+    }
+
+    private void DuplicateOrderCore(Order order)
+    {
+
         var copy = new Order
         {
             AccountEmail = order.AccountEmail,
@@ -2186,11 +2229,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _ => OrderAttentionFilter.All
         };
 
-        SearchText = string.Empty;
-        HideCompleted = false;
-        SelectedAttentionFilter = filter;
-        SelectedPage = AppPage.Orders;
-        LastActionMessage = AttentionFilterSummary;
+        RequestEditorTransition(
+            AppPage.Orders,
+            "show the requested Orders alert",
+            () =>
+            {
+                SearchText = string.Empty;
+                HideCompleted = false;
+                SelectedAttentionFilter = filter;
+                SelectedPage = AppPage.Orders;
+                LastActionMessage = AttentionFilterSummary;
+            });
     }
 
     private void ToggleVisibleOrderItemsExpansion()
@@ -2401,6 +2450,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void SaveCurrent()
     {
+        if (HasOpenModal)
+        {
+            return;
+        }
+
         switch (SelectedPage)
         {
             case AppPage.Orders when CanSaveOrder:
@@ -2432,22 +2486,128 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        switch (GetVisibleEditorPage())
+        {
+            case AppPage.Orders:
+                CloseOrderEditor();
+                break;
+            case AppPage.Accounts:
+                CloseAccountPresetEditor();
+                break;
+            case AppPage.Presets:
+                ClosePresetEditor();
+                break;
+        }
+    }
+
+    private void RequestEditorTransition(
+        AppPage targetPage,
+        string requestedAction,
+        Action transition,
+        bool replaceCurrentEditor = false)
+    {
+        if (HasOpenModal)
+        {
+            return;
+        }
+
+        var openEditorPages = GetOpenEditorPages();
+        var requiresDiscard = openEditorPages.Any(page => page != targetPage) ||
+                              replaceCurrentEditor && openEditorPages.Contains(targetPage);
+        if (!requiresDiscard)
+        {
+            transition();
+            return;
+        }
+
+        var editorName = GetPageDisplayName(GetVisibleEditorPage() ?? openEditorPages[0]);
+        ShowConfirmation(
+            "Discard open editor?",
+            $"Close the open {editorName} editor and {requestedAction}? Unsaved editor changes will be lost.",
+            "Discard and continue",
+            () =>
+            {
+                CloseAllEditors();
+                transition();
+            },
+            cancelMessage: $"Kept the open {editorName} editor.");
+    }
+
+    private List<AppPage> GetOpenEditorPages()
+    {
+        var pages = new List<AppPage>(3);
+        if (IsOrderEditorOpen)
+        {
+            pages.Add(AppPage.Orders);
+        }
+
+        if (IsAccountPresetEditorOpen)
+        {
+            pages.Add(AppPage.Accounts);
+        }
+
+        if (IsPresetEditorOpen)
+        {
+            pages.Add(AppPage.Presets);
+        }
+
+        return pages;
+    }
+
+    private AppPage? GetVisibleEditorPage()
+    {
+        return SelectedPage switch
+        {
+            AppPage.Orders when IsOrderEditorOpen => AppPage.Orders,
+            AppPage.Accounts when IsAccountPresetEditorOpen => AppPage.Accounts,
+            AppPage.Presets when IsPresetEditorOpen => AppPage.Presets,
+            _ => null
+        };
+    }
+
+    private void CloseEditorsExcept(AppPage page)
+    {
+        if (page != AppPage.Orders && IsOrderEditorOpen)
+        {
+            CloseOrderEditor();
+        }
+
+        if (page != AppPage.Accounts && IsAccountPresetEditorOpen)
+        {
+            CloseAccountPresetEditor();
+        }
+
+        if (page != AppPage.Presets && IsPresetEditorOpen)
+        {
+            ClosePresetEditor();
+        }
+    }
+
+    private void CloseAllEditors()
+    {
         if (IsOrderEditorOpen)
         {
             CloseOrderEditor();
-            return;
         }
 
         if (IsAccountPresetEditorOpen)
         {
             CloseAccountPresetEditor();
-            return;
         }
 
         if (IsPresetEditorOpen)
         {
             ClosePresetEditor();
         }
+    }
+
+    private static string GetPageDisplayName(AppPage page)
+    {
+        return page switch
+        {
+            AppPage.Presets => "Items",
+            _ => page.ToString()
+        };
     }
 
     private void ClearDiscordWebhook()
@@ -2955,11 +3115,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (!IsOrderEditorOpen)
+        if (GetVisibleEditorPage() == AppPage.Orders)
         {
-            BeginNewOrder();
+            ApplyAccountPresetToOrder(preset);
+            return;
         }
 
+        RequestEditorTransition(
+            AppPage.Orders,
+            "use the account in a new order",
+            () =>
+            {
+                BeginNewOrder();
+                ApplyAccountPresetToOrder(preset);
+            });
+    }
+
+    private void ApplyAccountPresetToOrder(AccountPreset preset)
+    {
         FormAccountEmail = preset.Email;
         if (preset.MerchantHint != MerchantKind.Unknown)
         {
@@ -3049,11 +3222,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (!IsOrderEditorOpen)
+        if (GetVisibleEditorPage() == AppPage.Orders)
         {
-            BeginNewOrder();
+            ApplyPresetToOrder(preset);
+            return;
         }
 
+        RequestEditorTransition(
+            AppPage.Orders,
+            "use the item in a new order",
+            () =>
+            {
+                BeginNewOrder();
+                ApplyPresetToOrder(preset);
+            });
+    }
+
+    private void ApplyPresetToOrder(ItemPreset preset)
+    {
         var target = FormItems.FirstOrDefault(item => string.IsNullOrWhiteSpace(item.Name));
 
         if (target is null)
@@ -3112,16 +3298,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectedPage = AppPage.Accounts;
     }
 
+    private void RequestNewAccountPreset()
+    {
+        RequestEditorTransition(AppPage.Accounts, "open a new account", BeginNewAccountPreset, replaceCurrentEditor: true);
+    }
+
+    private void RequestEditAccountPreset(AccountPreset? preset)
+    {
+        if (preset is null)
+        {
+            return;
+        }
+
+        RequestEditorTransition(AppPage.Accounts, "edit another account", () => BeginEditAccountPreset(preset), replaceCurrentEditor: true);
+    }
+
     private void ToggleQuickAccountPreset()
     {
-        if (IsAccountPresetEditorOpen)
+        if (GetVisibleEditorPage() == AppPage.Accounts)
         {
             CloseAccountPresetEditor();
             LastActionMessage = "Account panel closed.";
             return;
         }
 
-        BeginNewAccountPreset();
+        RequestNewAccountPreset();
     }
 
     private void ResetAccountPresetForm()
@@ -3239,6 +3440,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RequestEditorTransition(
+            AppPage.Accounts,
+            "duplicate the selected account",
+            () => DuplicateAccountPresetCore(preset),
+            replaceCurrentEditor: IsAccountPresetEditorOpen);
+    }
+
+    private void DuplicateAccountPresetCore(AccountPreset preset)
+    {
+
         var copy = new AccountPreset
         {
             CreatedAt = DateTime.Now,
@@ -3335,16 +3546,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectedPage = AppPage.Presets;
     }
 
+    private void RequestNewPreset()
+    {
+        RequestEditorTransition(AppPage.Presets, "open a new item", BeginNewPreset, replaceCurrentEditor: true);
+    }
+
+    private void RequestEditPreset(ItemPreset? preset)
+    {
+        if (preset is null)
+        {
+            return;
+        }
+
+        RequestEditorTransition(AppPage.Presets, "edit another item", () => BeginEditPreset(preset), replaceCurrentEditor: true);
+    }
+
     private void ToggleQuickPreset()
     {
-        if (IsPresetEditorOpen)
+        if (GetVisibleEditorPage() == AppPage.Presets)
         {
             ClosePresetEditor();
             LastActionMessage = "Item panel closed.";
             return;
         }
 
-        BeginNewPreset();
+        RequestNewPreset();
     }
 
     private void ResetPresetForm()
@@ -3487,6 +3713,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RequestEditorTransition(
+            AppPage.Presets,
+            "duplicate the selected item",
+            () => DuplicatePresetCore(preset),
+            replaceCurrentEditor: IsPresetEditorOpen);
+    }
+
+    private void DuplicatePresetCore(ItemPreset preset)
+    {
+
         var copy = new ItemPreset
         {
             Name = $"{preset.Name} copy".Trim(),
@@ -3617,6 +3853,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var matchesAttentionFilter = SelectedAttentionFilter switch
         {
             OrderAttentionFilter.Overdue => OrderState.IsOverdue(order.Status, order.ExpectedDate, today),
+            OrderAttentionFilter.ExpectedToday => order.IsOpen && order.ExpectedDate?.Date == today,
             OrderAttentionFilter.MissingTracking => order.IsOpen && !order.HasTrackingNumbers,
             OrderAttentionFilter.ReadyToArchive => order.CanArchive,
             _ => true
@@ -3801,6 +4038,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         CloseAccountUsageAudit();
+        var targetPage = order.IsArchived ? AppPage.Archive : AppPage.Orders;
+        RequestEditorTransition(
+            targetPage,
+            "open the selected account-usage order",
+            () => RevealAccountUsageOrder(order));
+    }
+
+    private void RevealAccountUsageOrder(Order order)
+    {
         if (order.IsArchived)
         {
             ArchiveSearchText = string.Empty;
@@ -4180,8 +4426,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Label = "Expected today",
                 Detail = $"{FormatSimpleCount(dueTodayOrders, "order")} may land today.",
                 Accent = "#FFB547",
-                Command = NavigateCommand,
-                CommandParameter = AppPage.Orders.ToString()
+                Command = ApplyOrderAttentionFilterCommand,
+                CommandParameter = OrderAttentionFilter.ExpectedToday
             });
         }
 
@@ -5310,8 +5556,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(CanSaveCurrent));
         OnPropertyChanged(nameof(CanCloseCurrentPanel));
+        ((RelayCommand)NewOrderCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)EditOrderCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)NewAccountPresetCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)EditAccountPresetCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)NewPresetCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)EditPresetCommand).RaiseCanExecuteChanged();
         ((RelayCommand)SaveCurrentCommand).RaiseCanExecuteChanged();
         ((RelayCommand)CloseCurrentPanelCommand).RaiseCanExecuteChanged();
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private void RaiseAccountActionCommandState()

@@ -37,6 +37,7 @@ public enum OrderAttentionFilter
 {
     All,
     Overdue,
+    ExpectedToday,
     MissingTracking,
     ReadyToArchive
 }

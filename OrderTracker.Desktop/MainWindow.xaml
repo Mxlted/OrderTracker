@@ -1047,59 +1047,90 @@
             <Setter Property="Padding" Value="10,8"/>
         </Style>
 
+        <DataTemplate x:Key="SidebarPanelItemCardTemplate">
+            <Border Background="{DynamicResource ControlBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="8"
+                    Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Background="{Binding Accent}"
+                            Width="3"
+                            CornerRadius="2"
+                            Margin="0,1,8,1"/>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Label}"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   FontWeight="SemiBold"
+                                   FontSize="11.5"/>
+                        <TextBlock Text="{Binding Detail}"
+                                   Style="{StaticResource MutedTextStyle}"
+                                   TextWrapping="Wrap"
+                                   TextTrimming="None"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="2"
+                               Text="›"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               FontSize="18"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Command}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
         <DataTemplate x:Key="SidebarPanelItemTemplate">
-            <Button Command="{Binding Command}"
-                    CommandParameter="{Binding CommandParameter}"
-                    Style="{StaticResource LinkButtonStyle}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Stretch">
-                <Border Background="{DynamicResource ControlBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Padding="8"
-                        Margin="0,0,0,6">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Border Background="{Binding Accent}"
-                                Width="3"
-                                CornerRadius="2"
-                                Margin="0,1,8,1"/>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="{Binding Label}"
-                                       Foreground="{DynamicResource TextBrush}"
-                                       FontWeight="SemiBold"
-                                       FontSize="11.5"/>
-                            <TextBlock Text="{Binding Detail}"
-                                       Style="{StaticResource MutedTextStyle}"
-                                       TextWrapping="Wrap"
-                                       TextTrimming="None"
-                                       Margin="0,2,0,0"/>
-                        </StackPanel>
-                        <TextBlock Grid.Column="2"
-                                   Text="›"
-                                   Foreground="{DynamicResource MutedTextBrush}"
-                                   FontSize="18"
-                                   VerticalAlignment="Center"
-                                   Margin="8,0,0,0">
-                            <TextBlock.Style>
-                                <Style TargetType="{x:Type TextBlock}">
+            <Grid>
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource SidebarPanelItemCardTemplate}"
+                                HorizontalAlignment="Stretch"
+                                IsHitTestVisible="False"
+                                Focusable="False">
+                    <ContentControl.Style>
+                        <Style TargetType="{x:Type ContentControl}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Command}" Value="{x:Null}">
                                     <Setter Property="Visibility" Value="Visible"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Command}" Value="{x:Null}">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Grid>
-                </Border>
-            </Button>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ContentControl.Style>
+                </ContentControl>
+                <Button Command="{Binding Command}"
+                        CommandParameter="{Binding CommandParameter}"
+                        Content="{Binding}"
+                        ContentTemplate="{StaticResource SidebarPanelItemCardTemplate}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch">
+                    <Button.Style>
+                        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource LinkButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Command}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="TrackingChipTemplate">
@@ -1618,8 +1649,8 @@
                                   Command="{Binding Data.OpenOrderLinkCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Copy tracking numbers"
-                                  Command="{x:Static local:MainWindow.CopyHighlightedTrackingNumbersCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                                  Command="{Binding Data.CopyTrackingNumbersCommand, Source={StaticResource VmProxy}}"
+                                  CommandParameter="{Binding}"/>
                         <MenuItem Header="Toggle completed"
                                   Command="{Binding Data.ToggleCompletedCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -1646,8 +1677,8 @@
                                   Command="{Binding Data.OpenOrderLinkCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Copy tracking numbers"
-                                  Command="{x:Static local:MainWindow.CopyHighlightedTrackingNumbersCommand}"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                                  Command="{Binding Data.CopyTrackingNumbersCommand, Source={StaticResource VmProxy}}"
+                                  CommandParameter="{Binding}"/>
                         <MenuItem Header="Delete"
                                   Command="{Binding Data.DeleteOrderCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
@@ -1663,9 +1694,6 @@
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                         <MenuItem Header="Edit"
                                   Command="{Binding Data.EditPresetCommand, Source={StaticResource VmProxy}}"
-                                  CommandParameter="{Binding}"/>
-                        <MenuItem Header="Use in order"
-                                  Command="{Binding Data.ApplyPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
                         <MenuItem Header="Duplicate"
                                   Command="{Binding Data.DuplicatePresetCommand, Source={StaticResource VmProxy}}"
@@ -1689,11 +1717,6 @@
                         <MenuItem Header="Use in order"
                                   Command="{Binding Data.ApplyAccountPresetCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"/>
-                        <MenuItem Header="{Binding OrderHistoryActionLabel}"
-                                  Command="{Binding Data.ViewAccountOrdersCommand, Source={StaticResource VmProxy}}"
-                                  CommandParameter="{Binding}"
-                                  ToolTip="{Binding OrderHistoryToolTip}"
-                                  ToolTipService.ShowOnDisabled="True"/>
                         <MenuItem Header="Clear session"
                                   Command="{Binding Data.ClearAccountSessionCommand, Source={StaticResource VmProxy}}"
                                   CommandParameter="{Binding}"
@@ -3116,16 +3139,10 @@
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <UniformGrid Columns="2" Margin="0,0,0,8">
-                                            <Button Content="New"
-                                                    Command="{Binding NewOrderCommand}"
-                                                    Style="{StaticResource OrderEditorFooterButtonStyle}"
-                                                    Margin="0,0,4,0"/>
-                                            <Button Content="Close"
-                                                    Command="{Binding CloseOrderEditorCommand}"
-                                                    Style="{StaticResource OrderEditorFooterButtonStyle}"
-                                                    Margin="4,0,0,0"/>
-                                        </UniformGrid>
+                                        <Button Content="New"
+                                                Command="{Binding NewOrderCommand}"
+                                                Style="{StaticResource OrderEditorFooterButtonStyle}"
+                                                Margin="0,0,0,8"/>
                                         <UniformGrid Columns="2">
                                             <Button Content="Toggle delivered"
                                                     Command="{Binding ToggleCompletedCommand}"
@@ -3879,16 +3896,10 @@
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <UniformGrid Columns="2" Margin="0,0,0,8">
-                                            <Button Content="New"
-                                                    Command="{Binding NewAccountPresetCommand}"
-                                                    Style="{StaticResource OrderEditorFooterButtonStyle}"
-                                                    Margin="0,0,4,0"/>
-                                            <Button Content="Close"
-                                                    Command="{Binding CloseAccountPresetEditorCommand}"
-                                                    Style="{StaticResource OrderEditorFooterButtonStyle}"
-                                                    Margin="4,0,0,0"/>
-                                        </UniformGrid>
+                                        <Button Content="New"
+                                                Command="{Binding NewAccountPresetCommand}"
+                                                Style="{StaticResource OrderEditorFooterButtonStyle}"
+                                                Margin="0,0,0,8"/>
                                         <UniformGrid Columns="2" Margin="0,0,0,8">
                                             <Button Content="Use in order"
                                                     Command="{Binding ApplyAccountPresetCommand}"
@@ -4317,16 +4328,10 @@
 
                                 <Border Style="{StaticResource OrderEditorSectionStyle}">
                                     <StackPanel>
-                                        <UniformGrid Columns="2" Margin="0,0,0,8">
-                                            <Button Content="New"
-                                                    Command="{Binding NewPresetCommand}"
-                                                    Style="{StaticResource OrderEditorFooterButtonStyle}"
-                                                    Margin="0,0,4,0"/>
-                                            <Button Content="Close"
-                                                    Command="{Binding ClosePresetEditorCommand}"
-                                                    Style="{StaticResource OrderEditorFooterButtonStyle}"
-                                                    Margin="4,0,0,0"/>
-                                        </UniformGrid>
+                                        <Button Content="New"
+                                                Command="{Binding NewPresetCommand}"
+                                                Style="{StaticResource OrderEditorFooterButtonStyle}"
+                                                Margin="0,0,0,8"/>
                                         <Button Content="Use in order"
                                                 Command="{Binding ApplyPresetCommand}"
                                                 CommandParameter="{Binding SelectedPreset}"
