@@ -56,7 +56,17 @@ public sealed class AccountPreset : ObservableObject
     public MerchantKind MerchantHint
     {
         get => _merchantHint;
-        set => SetProperty(ref _merchantHint, value);
+        set
+        {
+            if (SetProperty(ref _merchantHint, value))
+            {
+                OnPropertyChanged(nameof(SupportsOrderHistory));
+                OnPropertyChanged(nameof(SupportsIsolatedBrowserSession));
+                OnPropertyChanged(nameof(OrderHistoryActionLabel));
+                OnPropertyChanged(nameof(OrderHistoryToolTip));
+                OnPropertyChanged(nameof(ClearSessionToolTip));
+            }
+        }
     }
 
     public bool IsFavorite
@@ -95,6 +105,34 @@ public sealed class AccountPreset : ObservableObject
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
     }
+
+    [JsonIgnore]
+    public bool SupportsOrderHistory => PresetWorkflowRules.SupportsAccountOrderHistory(MerchantHint);
+
+    [JsonIgnore]
+    public bool SupportsIsolatedBrowserSession => PresetWorkflowRules.SupportsIsolatedAccountSession(MerchantHint);
+
+    [JsonIgnore]
+    public string OrderHistoryActionLabel => SupportsOrderHistory ? "View orders" : "History unavailable";
+
+    [JsonIgnore]
+    public string OrderHistoryToolTip => MerchantHint switch
+    {
+        MerchantKind.Amazon => "Open Amazon order history for this account.",
+        MerchantKind.Target => "Open Target order history for this account.",
+        MerchantKind.Unknown => "Choose Amazon or Target to enable account order history.",
+        _ => $"Account order history is not available for {MerchantDisplayName}."
+    };
+
+    [JsonIgnore]
+    public string ClearSessionToolTip => MerchantHint switch
+    {
+        MerchantKind.Amazon or MerchantKind.Target => $"Clear this account's isolated {MerchantDisplayName} browser session. Requires account sessions in Settings and an email.",
+        MerchantKind.Unknown => "Choose Amazon or Target to enable an isolated account session.",
+        _ => $"Isolated account sessions are not available for {MerchantDisplayName}."
+    };
+
+    private string MerchantDisplayName => MerchantHint == MerchantKind.BestBuy ? "Best Buy" : MerchantHint.ToString();
 
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Email : Name;
 

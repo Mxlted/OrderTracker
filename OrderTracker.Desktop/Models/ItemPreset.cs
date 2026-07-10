@@ -124,10 +124,10 @@ public sealed class ItemPreset : ObservableObject
 
     public string UsageGroup => UsageCount switch
     {
-        <= 0 => "Unused",
-        1 => "Used once",
-        <= 4 => "Used 2-4 times",
-        _ => "Used 5+ times"
+        <= 0 => "Never saved",
+        1 => "Saved once",
+        <= 4 => "Saved 2-4 times",
+        _ => "Saved 5+ times"
     };
 
     public string PriceRangeGroup => DefaultUnitPrice switch

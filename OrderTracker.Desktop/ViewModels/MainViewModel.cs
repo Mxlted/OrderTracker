@@ -28,6 +28,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly NetworkTimeService _networkTimeService = new();
     private readonly MerchantFaviconService _merchantFaviconService = new();
     private readonly HashSet<MerchantKind> _pendingMerchantFaviconFetches = new();
+    private readonly HashSet<ItemPreset> _pendingAppliedItemPresets = new();
     private readonly AppData _data;
     private readonly DispatcherTimer _autosaveTimer = new();
     private readonly DispatcherTimer _sidebarClockTimer = new();
@@ -228,7 +229,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteAccountPresetCommand = new RelayCommand(parameter => DeleteAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         DuplicateAccountPresetCommand = new RelayCommand(parameter => DuplicateAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
         ApplyAccountPresetCommand = new RelayCommand(parameter => ApplyAccountPreset(parameter as AccountPreset), parameter => parameter is AccountPreset);
-        ViewAccountOrdersCommand = new RelayCommand(async parameter => await ViewAccountOrdersAsync(parameter as AccountPreset), parameter => parameter is AccountPreset);
+        ViewAccountOrdersCommand = new RelayCommand(async parameter => await ViewAccountOrdersAsync(parameter as AccountPreset), parameter => CanViewAccountOrders(parameter as AccountPreset));
         ClearAccountSessionCommand = new RelayCommand(parameter => ClearAccountSession(parameter as AccountPreset), parameter => CanClearAccountSession(parameter as AccountPreset));
         SelectVisibleAccountPresetsCommand = new RelayCommand(_ => SelectAccountPresets(AccountPresetsView, true));
         ClearSelectedAccountPresetsCommand = new RelayCommand(_ => ClearAccountPresetSelection(), _ => SelectedAccountPresetCount > 0);
@@ -846,6 +847,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string FormProjectionSummary => $"Projected profit {FormProjectedProfit.ToString("C", CultureInfo.CurrentCulture)} at {FormEffectiveRoiPercent.ToString("0.##", CultureInfo.CurrentCulture)}%";
 
+    public bool HasFormCostDetails => ParseMoneyPreview(FormShippingCostInput) > 0m || ParseMoneyPreview(FormTaxInput) > 0m;
+
+    public string FormCostDetailSummary
+    {
+        get
+        {
+            var details = new List<string>();
+            var shipping = ParseMoneyPreview(FormShippingCostInput);
+            var tax = ParseMoneyPreview(FormTaxInput);
+            if (shipping > 0m)
+            {
+                details.Add($"Shipping {shipping.ToString("C", CultureInfo.CurrentCulture)}");
+            }
+
+            if (tax > 0m)
+            {
+                details.Add($"Tax {tax.ToString("C", CultureInfo.CurrentCulture)}");
+            }
+
+            return details.Count == 0 ? string.Empty : $"Includes {string.Join(" · ", details)}";
+        }
+    }
+
     public AccountPreset? SelectedOrderAccountPreset
     {
         get => _selectedOrderAccountPreset;
@@ -1209,7 +1233,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedAccountPreset, value))
             {
-                RaiseAccountSessionCommandState();
+                RaiseAccountActionCommandState();
             }
         }
     }
@@ -1698,6 +1722,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ResetOrderForm()
     {
+        _pendingAppliedItemPresets.Clear();
         _editingOrderId = null;
         SelectedOrder = null;
         SelectedOrderAccountPreset = null;
@@ -1726,6 +1751,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void CloseOrderEditor()
     {
+        _pendingAppliedItemPresets.Clear();
         IsOrderEditorOpen = false;
         _editingOrderId = null;
         SelectedOrderAccountPreset = null;
@@ -1741,6 +1767,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        _pendingAppliedItemPresets.Clear();
         _editingOrderId = order.Id;
         SelectedOrder = order;
         SelectedOrderAccountPreset = null;
@@ -1794,6 +1821,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
         });
 
+        CommitPendingItemPresetUsage();
         SelectedOrder = order;
         RefreshAfterOrderChange($"Order {(isNew ? "added" : "updated")}.");
         CloseOrderEditor();
@@ -2588,6 +2616,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FormEffectiveRoiPercent));
         OnPropertyChanged(nameof(FormProjectedProfit));
         OnPropertyChanged(nameof(FormProjectionSummary));
+        OnPropertyChanged(nameof(HasFormCostDetails));
+        OnPropertyChanged(nameof(FormCostDetailSummary));
     }
 
     private static int ParseQuantityPreview(string input)
@@ -2934,24 +2964,34 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task ViewAccountOrdersAsync(AccountPreset? preset)
     {
-        if (preset is null)
+        if (preset is null ||
+            !CarrierRecognizer.TryBuildOrderHistoryUrl(preset.MerchantHint, out var url))
         {
+            LastActionMessage = preset is null
+                ? "Select an account before viewing order history."
+                : $"Account order history is not available for {preset.MerchantHint}.";
             return;
         }
 
-        var merchant = GetAccountSessionMerchant(preset);
-        var url = merchant == MerchantKind.Target
-            ? CarrierRecognizer.BuildTargetOrderHistoryUrl()
-            : CarrierRecognizer.BuildAmazonOrderHistoryUrl();
-
         LastActionMessage = "Opening account orders...";
-        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(preset, merchant, url));
+        LastActionMessage = await OpenUrlAsync(url, BuildBrowserSessionContext(preset, preset.MerchantHint, url));
+    }
+
+    private static bool CanViewAccountOrders(AccountPreset? preset)
+    {
+        return preset is { SupportsOrderHistory: true };
     }
 
     private void ClearAccountSession(AccountPreset? preset)
     {
         if (preset is null)
         {
+            return;
+        }
+
+        if (!preset.SupportsIsolatedBrowserSession)
+        {
+            LastActionMessage = $"Browser sessions are not available for {preset.MerchantHint}.";
             return;
         }
 
@@ -2967,7 +3007,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var merchant = GetAccountSessionMerchant(preset);
+        var merchant = preset.MerchantHint;
         var sessionContext = BuildBrowserSessionContext(preset, merchant);
         if (sessionContext is null)
         {
@@ -2989,14 +3029,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         return Settings.UseAccountBrowserSessions &&
             preset is not null &&
+            preset.SupportsIsolatedBrowserSession &&
             !string.IsNullOrWhiteSpace(preset.Email);
-    }
-
-    private static MerchantKind GetAccountSessionMerchant(AccountPreset preset)
-    {
-        return preset.MerchantHint == MerchantKind.Target
-            ? MerchantKind.Target
-            : MerchantKind.Amazon;
     }
 
     private void ApplyPreset(ItemPreset? preset)
@@ -3022,17 +3056,45 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         target.Name = preset.Name;
         target.Quantity = preset.DefaultQuantity;
         target.UnitPrice = preset.DefaultUnitPrice;
-        if (FormShippingCost == 0m)
-        {
-            FormShippingCost = preset.DefaultShipping;
-        }
+        FormShippingCost = PresetWorkflowRules.ApplyMoneyDefault(ParseMoneyPreview(FormShippingCostInput), preset.DefaultShipping);
+        FormTax = PresetWorkflowRules.ApplyMoneyDefault(ParseMoneyPreview(FormTaxInput), preset.DefaultTax);
 
         if (preset.MerchantHint != MerchantKind.Unknown)
         {
             FormMerchant = preset.MerchantHint;
         }
 
-        RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
+        _pendingAppliedItemPresets.Add(preset);
+
+        SelectedPage = AppPage.Orders;
+        LastActionMessage = $"Applied item '{preset.Name}'.";
+        PersistIfNeeded();
+    }
+
+    private void CommitPendingItemPresetUsage()
+    {
+        if (_pendingAppliedItemPresets.Count == 0)
+        {
+            return;
+        }
+
+        var appliedPresets = _pendingAppliedItemPresets
+            .Where(ItemPresets.Contains)
+            .ToList();
+        _pendingAppliedItemPresets.Clear();
+        if (appliedPresets.Count == 0)
+        {
+            return;
+        }
+
+        RunWithPresetChangeNotificationsSuppressed(() =>
+        {
+            foreach (var preset in appliedPresets)
+            {
+                preset.UsageCount++;
+            }
+        });
+
         if (SelectedItemSort is ItemSortOption.MostUsed or ItemSortOption.LeastUsed ||
             SelectedItemGroup == ItemGroupOption.Usage)
         {
@@ -3040,10 +3102,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         OrderItemPresetsView.Refresh();
-
-        SelectedPage = AppPage.Orders;
-        LastActionMessage = $"Applied item '{preset.Name}'.";
-        PersistIfNeeded();
     }
 
     private void BeginNewAccountPreset()
@@ -3139,6 +3197,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RefreshAccountUsageCounts();
         AccountPresetsView.Refresh();
         RefreshOrderAccountPresets();
+        RaiseAccountActionCommandState();
         SaveNow($"Account preset {(isNew ? "added" : "updated")}.");
         CloseAccountPresetEditor();
     }
@@ -3647,7 +3706,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool FilterOrderItemPreset(object value)
     {
         return value is ItemPreset preset &&
-               (FormMerchant == MerchantKind.Unknown || preset.MerchantHint is MerchantKind.Unknown || preset.MerchantHint == FormMerchant);
+               PresetWorkflowRules.IsMerchantQuickFillMatch(FormMerchant, preset.MerchantHint);
     }
 
     private bool FilterAccountPreset(object value)
@@ -3796,7 +3855,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private bool IsOrderAccountPresetVisible(AccountPreset preset)
     {
-        return FormMerchant == MerchantKind.Unknown || preset.MerchantHint == FormMerchant;
+        return PresetWorkflowRules.IsMerchantQuickFillMatch(FormMerchant, preset.MerchantHint);
     }
 
     private void RefreshOrderAccountPresets()
@@ -4772,7 +4831,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (sender == Settings && e.PropertyName == nameof(AppSettings.UseAccountBrowserSessions))
         {
-            RaiseAccountSessionCommandState();
+            RaiseAccountActionCommandState();
         }
 
         if (sender == Settings &&
@@ -4967,7 +5026,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (e.PropertyName is nameof(AccountPreset.Email) or nameof(AccountPreset.MerchantHint))
         {
-            RaiseAccountSessionCommandState();
+            RaiseAccountActionCommandState();
         }
 
         AccountPresetsView.Refresh();
@@ -5157,8 +5216,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ((RelayCommand)CloseCurrentPanelCommand).RaiseCanExecuteChanged();
     }
 
-    private void RaiseAccountSessionCommandState()
+    private void RaiseAccountActionCommandState()
     {
+        if (ViewAccountOrdersCommand is RelayCommand viewAccountOrdersCommand)
+        {
+            viewAccountOrdersCommand.RaiseCanExecuteChanged();
+        }
+
         if (ClearAccountSessionCommand is RelayCommand clearAccountSessionCommand)
         {
             clearAccountSessionCommand.RaiseCanExecuteChanged();

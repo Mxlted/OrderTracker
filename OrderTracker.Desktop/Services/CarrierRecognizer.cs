@@ -120,6 +120,18 @@ public static partial class CarrierRecognizer
         return TargetOrderHistoryUrl;
     }
 
+    public static bool TryBuildOrderHistoryUrl(MerchantKind merchant, out string url)
+    {
+        url = merchant switch
+        {
+            MerchantKind.Amazon => BuildAmazonOrderHistoryUrl(),
+            MerchantKind.Target => BuildTargetOrderHistoryUrl(),
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(url);
+    }
+
     private static string BuildTargetOrderUrl(string orderNumber)
     {
         var trimmed = orderNumber.Trim();
