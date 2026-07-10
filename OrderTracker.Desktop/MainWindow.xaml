@@ -1433,6 +1433,7 @@
             <Setter Property="SelectionUnit" Value="FullRow"/>
             <Setter Property="CanUserAddRows" Value="False"/>
             <Setter Property="CanUserDeleteRows" Value="False"/>
+            <Setter Property="CanUserReorderColumns" Value="False"/>
             <Setter Property="AutoGenerateColumns" Value="False"/>
             <Setter Property="IsReadOnly" Value="True"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
@@ -2484,6 +2485,16 @@
                                                     Width="Auto"
                                                     MinWidth="34"
                                                     MaxWidth="38">
+                                <DataGridTemplateColumn.HeaderTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsThreeState="True"
+                                                  IsChecked="{Binding Data.AreAllVisibleOrdersSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
+                                                  ToolTip="Select all visible orders; when all are selected, clear them. A dash means only some are selected."
+                                                  AutomationProperties.Name="Select or clear all visible orders"
+                                                  HorizontalAlignment="Center"
+                                                  Margin="0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -2568,15 +2579,6 @@
                                                     Width="Auto"
                                                     MinWidth="126"
                                                     Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
-                                <DataGridTemplateColumn.HeaderTemplate>
-                                    <DataTemplate>
-                                        <CheckBox IsThreeState="True"
-                                                  IsChecked="{Binding Data.AreAllVisibleOrdersSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
-                                                  AutomationProperties.Name="Select all visible orders"
-                                                  HorizontalAlignment="Center"
-                                                  Margin="0"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Grid VerticalAlignment="Center">
@@ -3218,6 +3220,16 @@
                                                         Width="Auto"
                                                         MinWidth="34"
                                                         MaxWidth="38">
+                                    <DataGridTemplateColumn.HeaderTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsThreeState="True"
+                                                      IsChecked="{Binding Data.AreAllVisibleArchivedOrdersSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
+                                                      ToolTip="Select all visible archived orders; when all are selected, clear them. A dash means only some are selected."
+                                                      AutomationProperties.Name="Select or clear all visible archived orders"
+                                                      HorizontalAlignment="Center"
+                                                      Margin="0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.HeaderTemplate>
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3302,15 +3314,6 @@
                                                         Width="Auto"
                                                         MinWidth="126"
                                                         Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
-                                    <DataGridTemplateColumn.HeaderTemplate>
-                                        <DataTemplate>
-                                            <CheckBox IsThreeState="True"
-                                                      IsChecked="{Binding Data.AreAllVisibleArchivedOrdersSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
-                                                      AutomationProperties.Name="Select all visible archived orders"
-                                                      HorizontalAlignment="Center"
-                                                      Margin="0"/>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.HeaderTemplate>
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid VerticalAlignment="Center">
@@ -3651,7 +3654,8 @@
                                             <DataTemplate>
                                                 <CheckBox IsThreeState="True"
                                                           IsChecked="{Binding Data.AreAllVisibleAccountPresetsSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
-                                                          AutomationProperties.Name="Select all visible accounts"
+                                                          ToolTip="Select all visible accounts; when all are selected, clear them. A dash means only some are selected."
+                                                          AutomationProperties.Name="Select or clear all visible accounts"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>
@@ -4061,7 +4065,8 @@
                                             <DataTemplate>
                                                 <CheckBox IsThreeState="True"
                                                           IsChecked="{Binding Data.AreAllVisiblePresetsSelected, Source={StaticResource VmProxy}, Mode=TwoWay}"
-                                                          AutomationProperties.Name="Select all visible items"
+                                                          ToolTip="Select all visible items; when all are selected, clear them. A dash means only some are selected."
+                                                          AutomationProperties.Name="Select or clear all visible items"
                                                           HorizontalAlignment="Center"
                                                           Margin="0"/>
                                             </DataTemplate>

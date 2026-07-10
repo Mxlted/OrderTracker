@@ -756,49 +756,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool? AreAllVisibleOrdersSelected
     {
         get => GetVisibleSelectionState(OrdersView, item => item is Order { IsArchived: false } order && order.IsSelected);
-        set
-        {
-            if (value.HasValue)
-            {
-                SelectOrders(OrdersView, value.Value);
-            }
-        }
+        set => SelectOrders(OrdersView, AreAllVisibleOrdersSelected != true);
     }
 
     public bool? AreAllVisibleArchivedOrdersSelected
     {
         get => GetVisibleSelectionState(ArchivedOrdersView, item => item is Order { IsArchived: true } order && order.IsSelected);
-        set
-        {
-            if (value.HasValue)
-            {
-                SelectOrders(ArchivedOrdersView, value.Value);
-            }
-        }
+        set => SelectOrders(ArchivedOrdersView, AreAllVisibleArchivedOrdersSelected != true);
     }
 
     public bool? AreAllVisibleAccountPresetsSelected
     {
         get => GetVisibleSelectionState(AccountPresetsView, item => item is AccountPreset preset && preset.IsSelected);
-        set
-        {
-            if (value.HasValue)
-            {
-                SelectAccountPresets(AccountPresetsView, value.Value);
-            }
-        }
+        set => SelectAccountPresets(AccountPresetsView, AreAllVisibleAccountPresetsSelected != true);
     }
 
     public bool? AreAllVisiblePresetsSelected
     {
         get => GetVisibleSelectionState(PresetsView, item => item is ItemPreset preset && preset.IsSelected);
-        set
-        {
-            if (value.HasValue)
-            {
-                SelectItemPresets(PresetsView, value.Value);
-            }
-        }
+        set => SelectItemPresets(PresetsView, AreAllVisiblePresetsSelected != true);
     }
 
     public string ActiveOrderBulkSelectionSummary => FormatSelectedCount(SelectedActiveOrderCount, "active order");

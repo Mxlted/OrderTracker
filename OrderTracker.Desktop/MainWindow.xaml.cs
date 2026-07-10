@@ -292,8 +292,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        menu.PlacementTarget = row;
-        menu.Placement = PlacementMode.Bottom;
+        menu.PlacementTarget = button;
+        menu.Placement = PlacementMode.Left;
+        menu.HorizontalOffset = -4;
+        menu.VerticalOffset = 0;
         menu.IsOpen = true;
         e.Handled = true;
     }
