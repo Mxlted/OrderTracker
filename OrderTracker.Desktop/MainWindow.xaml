@@ -3487,12 +3487,22 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Used"
-                                                        Binding="{Binding UsageCount}"
-                                                        Width="Auto"
-                                                        MinWidth="58"
-                                                        MaxWidth="70"
-                                                        ElementStyle="{StaticResource CellTextStyle}"/>
+                                    <DataGridTemplateColumn Header="Used"
+                                                            Width="Auto"
+                                                            MinWidth="58"
+                                                            MaxWidth="70">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="{Binding UsageCount}"
+                                                        Command="{Binding Data.OpenAccountUsageAuditCommand, Source={StaticResource VmProxy}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource LinkButtonStyle}"
+                                                        HorizontalAlignment="Center"
+                                                        ToolTip="Show the exact orders counted for this account"
+                                                        AutomationProperties.Name="Show counted orders"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                     <DataGridTemplateColumn Header="Actions"
                                                             Width="Auto"
                                                             MinWidth="250"
@@ -4357,6 +4367,129 @@
                     </Border>
                 </Grid>
             </Grid>
+        </Grid>
+
+        <Grid Panel.ZIndex="101"
+              Grid.ColumnSpan="2"
+              Background="{DynamicResource ModalOverlayBrush}"
+              Visibility="{Binding IsAccountUsageAuditOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="22"
+                    Width="800"
+                    MaxHeight="650"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding AccountUsageAuditTitle}"
+                                   Style="{StaticResource SectionTitleStyle}"
+                                   FontSize="18"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                Content="Close"
+                                Command="{Binding CloseAccountUsageAuditCommand}"
+                                IsCancel="True"
+                                Margin="16,0,0,0"/>
+                    </Grid>
+                    <TextBlock Grid.Row="1"
+                               Text="{Binding AccountUsageAuditSummary}"
+                               Style="{StaticResource MutedTextStyle}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,14"/>
+                    <Border Grid.Row="2"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="7"
+                            Padding="8">
+                        <ScrollViewer MaxHeight="440"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding AccountUsageAuditOrders}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource SurfaceBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="6"
+                                                Padding="10"
+                                                Margin="0,0,0,7">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="1.2*"/>
+                                                    <ColumnDefinition Width="1.1*"/>
+                                                    <ColumnDefinition Width="0.8*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                    <TextBlock Text="{Binding OrderNumber}"
+                                                               Foreground="{DynamicResource TextBrush}"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding OrderNumber}"/>
+                                                    <TextBlock Text="{Binding PrimaryItem}"
+                                                               Style="{StaticResource MutedTextStyle}"
+                                                               FontSize="11"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding ItemsToolTip}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                    <TextBlock Text="{Binding AccountEmail}"
+                                                               Foreground="{DynamicResource TextBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding AccountEmail}"/>
+                                                    <TextBlock Text="{Binding Merchant}"
+                                                               Style="{StaticResource MutedTextStyle}"
+                                                               FontSize="11"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                                    <TextBlock Text="{Binding OrderDate, StringFormat='Ordered {0:M/d/yy}'}"
+                                                               Foreground="{DynamicResource TextBrush}"/>
+                                                    <TextBlock Text="{Binding Status}"
+                                                               Style="{StaticResource MutedTextStyle}"
+                                                               FontSize="11"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="3"
+                                                        Content="Open in Orders"
+                                                        Command="{Binding Data.OpenAccountUsageOrderCommand, Source={StaticResource VmProxy}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource GridActionButtonStyle}"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding IsArchived, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+                                                <Button Grid.Column="3"
+                                                        Content="Open in Archive"
+                                                        Command="{Binding Data.OpenAccountUsageOrderCommand, Source={StaticResource VmProxy}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource GridActionButtonStyle}"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding IsArchived, Converter={StaticResource BoolToVisibility}}"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                    <TextBlock Grid.Row="3"
+                               Text="Notes and other order fields are never used for this match."
+                               Style="{StaticResource MutedTextStyle}"
+                               FontSize="11"
+                               Margin="0,10,0,0"/>
+                </Grid>
+            </Border>
         </Grid>
 
         <Grid Panel.ZIndex="100"

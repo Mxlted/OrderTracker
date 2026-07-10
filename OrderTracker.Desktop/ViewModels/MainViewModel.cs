@@ -72,6 +72,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _confirmationCancelText = "Cancel";
     private Action? _pendingConfirmationAction;
     private string? _pendingConfirmationCancelMessage;
+    private bool _isAccountUsageAuditOpen;
+    private AccountPreset? _accountUsageAuditPreset;
 
     private string _formAccountEmail = string.Empty;
     private MerchantKind _formMerchant = MerchantKind.Unknown;
@@ -211,6 +213,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectVisibleAccountPresetsCommand = new RelayCommand(_ => SelectAccountPresets(AccountPresetsView, true));
         ClearSelectedAccountPresetsCommand = new RelayCommand(_ => ClearAccountPresetSelection(), _ => SelectedAccountPresetCount > 0);
         DeleteSelectedAccountPresetsCommand = new RelayCommand(_ => DeleteSelectedAccountPresets(), _ => SelectedAccountPresetCount > 0);
+        OpenAccountUsageAuditCommand = new RelayCommand(parameter => OpenAccountUsageAudit(parameter as AccountPreset), parameter => parameter is AccountPreset);
+        CloseAccountUsageAuditCommand = new RelayCommand(_ => CloseAccountUsageAudit());
+        OpenAccountUsageOrderCommand = new RelayCommand(parameter => OpenAccountUsageOrder(parameter as Order), parameter => parameter is Order);
 
         NewPresetCommand = new RelayCommand(_ => BeginNewPreset());
         ToggleQuickPresetCommand = new RelayCommand(_ => ToggleQuickPreset());
@@ -229,6 +234,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ResetOrderForm();
         ResetAccountPresetForm();
         ResetPresetForm();
+        var accountUsageChanged = RefreshAccountUsageCounts();
         ApplySortAndGroup();
         ApplyArchiveSort();
         ApplyAccountPresetSortAndGroup();
@@ -239,6 +245,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         QueueMerchantFaviconFetch();
         StartSidebarClock();
         _ = SyncSidebarClockAsync();
+        if (accountUsageChanged)
+        {
+            PersistIfNeeded();
+        }
     }
 
     public AppSettings Settings => _data.Settings;
@@ -248,6 +258,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<AccountPreset> AccountPresets => _data.AccountPresets;
 
     public ObservableCollection<ItemPreset> ItemPresets => _data.ItemPresets;
+
+    public ObservableCollection<Order> AccountUsageAuditOrders { get; } = new();
+
+    public event Action<Order>? OrderRevealRequested;
 
     public ICollectionView OrdersView { get; }
 
@@ -401,6 +415,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand ClearSelectedAccountPresetsCommand { get; }
 
     public ICommand DeleteSelectedAccountPresetsCommand { get; }
+
+    public ICommand OpenAccountUsageAuditCommand { get; }
+
+    public ICommand CloseAccountUsageAuditCommand { get; }
+
+    public ICommand OpenAccountUsageOrderCommand { get; }
 
     public ICommand NewPresetCommand { get; }
 
@@ -1075,6 +1095,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _confirmationIsDanger, value);
     }
 
+    public bool IsAccountUsageAuditOpen
+    {
+        get => _isAccountUsageAuditOpen;
+        private set => SetProperty(ref _isAccountUsageAuditOpen, value);
+    }
+
+    public string AccountUsageAuditTitle => _accountUsageAuditPreset is null
+        ? "Account usage"
+        : $"Orders counted for {_accountUsageAuditPreset.DisplayName}";
+
+    public string AccountUsageAuditSummary
+    {
+        get
+        {
+            var activeCount = AccountUsageAuditOrders.Count(order => !order.IsArchived);
+            var archivedCount = AccountUsageAuditOrders.Count - activeCount;
+            return $"{FormatSimpleCount(AccountUsageAuditOrders.Count, "matching order")} - " +
+                   $"{FormatSimpleCount(activeCount, "Orders page result")}, " +
+                   $"{FormatSimpleCount(archivedCount, "Archive result")}. Matching uses only the Account/email field.";
+        }
+    }
+
     public string DataFilePath => _dataStore.DataFilePath;
 
     public int MerchantIconCacheVersion
@@ -1415,7 +1457,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var order = Orders.FirstOrDefault(candidate => candidate.Id == _editingOrderId);
         var isNew = order is null;
         order ??= new Order();
-        var previousAccountEmail = isNew ? string.Empty : order.AccountEmail;
 
         RunWithOrderChangeNotificationsSuppressed(() =>
         {
@@ -1426,8 +1467,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Orders.Add(order);
             }
         });
-
-        CountMatchingAccountUsage(previousAccountEmail, order);
 
         SelectedOrder = order;
         RefreshAfterOrderChange($"Order {(isNew ? "added" : "updated")}.");
@@ -1614,7 +1653,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
 
         RunWithOrderChangeNotificationsSuppressed(() => Orders.Add(copy));
-        CountMatchingAccountUsage(string.Empty, copy);
         BeginEditOrder(copy);
         RefreshAfterOrderChange("Duplicated order. Add the new order number and tracking when ready.");
     }
@@ -2582,6 +2620,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         });
 
         SelectedAccountPreset = preset;
+        RefreshAccountUsageCounts();
         AccountPresetsView.Refresh();
         RefreshOrderAccountPresets();
         SaveNow($"Account preset {(isNew ? "added" : "updated")}.");
@@ -2614,6 +2653,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     CloseAccountPresetEditor();
                 }
 
+                RefreshAccountUsageCounts();
                 AccountPresetsView.Refresh();
                 RefreshOrderAccountPresets();
                 RefreshBulkSelectionState();
@@ -2641,6 +2681,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
 
         RunWithPresetChangeNotificationsSuppressed(() => AccountPresets.Add(copy));
+        RefreshAccountUsageCounts();
         SelectedAccountPreset = copy;
         AccountPresetsView.Refresh();
         RefreshOrderAccountPresets();
@@ -2715,6 +2756,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     }
                 }
 
+                RefreshAccountUsageCounts();
                 AccountPresetsView.Refresh();
                 RefreshOrderAccountPresets();
                 RefreshBulkSelectionState();
@@ -3084,29 +3126,125 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return haystack.Contains(AccountPresetSearchText, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void CountMatchingAccountUsage(string previousAccountEmail, Order order)
+    private AccountPreset? FindMatchingAccountPreset(Order order)
     {
         var accountEmail = order.AccountEmail.Trim();
-        if (string.IsNullOrWhiteSpace(accountEmail) ||
-            string.Equals(previousAccountEmail.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(accountEmail))
         {
-            return;
+            return null;
         }
 
-        var preset = AccountPresets.FirstOrDefault(candidate =>
+        return AccountPresets.FirstOrDefault(candidate =>
             candidate.MerchantHint == order.Merchant &&
             string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase)) ??
             AccountPresets.FirstOrDefault(candidate =>
                 string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase));
+    }
 
-        if (preset is null)
+    private bool RefreshAccountUsageCounts()
+    {
+        var counts = AccountPresets.ToDictionary(preset => preset, _ => 0);
+        foreach (var order in Orders)
+        {
+            var preset = FindMatchingAccountPreset(order);
+            if (preset is not null)
+            {
+                counts[preset]++;
+            }
+        }
+
+        var changed = false;
+        RunWithPresetChangeNotificationsSuppressed(() =>
+        {
+            foreach (var (preset, count) in counts)
+            {
+                if (preset.UsageCount != count)
+                {
+                    preset.UsageCount = count;
+                    changed = true;
+                }
+            }
+        });
+
+        if (changed)
+        {
+            AccountPresetsView.Refresh();
+            RefreshOrderAccountPresets();
+        }
+
+        RefreshAccountUsageAuditOrders();
+        return changed;
+    }
+
+    private void OpenAccountUsageAudit(AccountPreset? preset)
+    {
+        if (preset is null || !AccountPresets.Contains(preset))
         {
             return;
         }
 
-        RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
-        AccountPresetsView.Refresh();
-        RefreshOrderAccountPresets();
+        RefreshAccountUsageCounts();
+        _accountUsageAuditPreset = preset;
+        RefreshAccountUsageAuditOrders();
+        OnPropertyChanged(nameof(AccountUsageAuditTitle));
+        IsAccountUsageAuditOpen = true;
+    }
+
+    private void CloseAccountUsageAudit()
+    {
+        IsAccountUsageAuditOpen = false;
+        _accountUsageAuditPreset = null;
+        AccountUsageAuditOrders.Clear();
+        OnPropertyChanged(nameof(AccountUsageAuditTitle));
+        OnPropertyChanged(nameof(AccountUsageAuditSummary));
+    }
+
+    private void RefreshAccountUsageAuditOrders()
+    {
+        if (_accountUsageAuditPreset is null)
+        {
+            return;
+        }
+
+        var matchingOrders = Orders
+            .Where(order => ReferenceEquals(FindMatchingAccountPreset(order), _accountUsageAuditPreset))
+            .OrderBy(order => order.IsArchived)
+            .ThenByDescending(order => order.CreatedAt)
+            .ToList();
+
+        AccountUsageAuditOrders.Clear();
+        foreach (var order in matchingOrders)
+        {
+            AccountUsageAuditOrders.Add(order);
+        }
+
+        OnPropertyChanged(nameof(AccountUsageAuditSummary));
+    }
+
+    private void OpenAccountUsageOrder(Order? order)
+    {
+        if (order is null || !Orders.Contains(order))
+        {
+            return;
+        }
+
+        CloseAccountUsageAudit();
+        if (order.IsArchived)
+        {
+            ArchiveSearchText = string.Empty;
+            SelectedPage = AppPage.Archive;
+        }
+        else
+        {
+            SearchText = string.Empty;
+            HideCompleted = false;
+            SelectedPage = AppPage.Orders;
+        }
+
+        SelectedOrder = null;
+        SelectedOrder = order;
+        OrderRevealRequested?.Invoke(order);
+        LastActionMessage = $"Opened {DescribeOrder(order)} from account usage.";
     }
 
     private bool FilterOrderAccountPreset(object value)
@@ -4135,6 +4273,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RefreshAccountUsageCounts();
         RefreshDashboard();
         RefreshOrderViews();
         RefreshLegacyOrderItemMigrationState();
@@ -4166,6 +4305,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RefreshAccountUsageCounts();
         RefreshBulkSelectionState();
         RefreshOrderAccountPresets();
     }
@@ -4303,6 +4443,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             LastActionMessage = $"Order status changed to {orderWithStatus.Status}.";
         }
 
+        RefreshAccountUsageCounts();
         RefreshDashboard();
         RefreshOrderViews();
         RefreshLegacyOrderItemMigrationState();
@@ -4324,6 +4465,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void RefreshAfterOrderChange(string? message = null)
     {
+        RefreshAccountUsageCounts();
         RefreshOrderViews();
         RefreshDashboard();
         RefreshLegacyOrderItemMigrationState();

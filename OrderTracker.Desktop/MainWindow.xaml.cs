@@ -92,6 +92,7 @@ public partial class MainWindow : Window
             CopyHighlightedTrackingNumbersCommand,
             CopyHighlightedTrackingNumbersExecuted,
             CanCopyHighlightedTrackingNumbers));
+        _viewModel.OrderRevealRequested += RevealOrder;
         _viewModel.Settings.PropertyChanged += SettingsPropertyChanged;
         Loaded += MainWindowLoaded;
         SizeChanged += MainWindowSizeChanged;
@@ -109,6 +110,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _viewModel.OrderRevealRequested -= RevealOrder;
         _viewModel.Settings.PropertyChanged -= SettingsPropertyChanged;
         Loaded -= MainWindowLoaded;
         SizeChanged -= MainWindowSizeChanged;
@@ -126,6 +128,18 @@ public partial class MainWindow : Window
         _scrollRailBindings.Clear();
         _viewModel.Dispose();
         base.OnClosed(e);
+    }
+
+    private void RevealOrder(Order order)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            var grid = order.IsArchived ? ArchiveGrid : OrdersGrid;
+            grid.UpdateLayout();
+            grid.SelectedItem = order;
+            grid.ScrollIntoView(order);
+            grid.Focus();
+        }));
     }
 
     protected override void OnSourceInitialized(EventArgs e)
