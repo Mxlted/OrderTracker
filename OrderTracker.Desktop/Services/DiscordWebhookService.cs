@@ -47,7 +47,7 @@ public sealed class DiscordWebhookService
         var today = DateTime.Today;
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
-        var openOrders = orderList.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var openOrders = orderList.Where(order => !order.IsArchived && OrderState.IsOpen(order.Status)).ToList();
         var open = openOrders.Count;
         var deliveredThisMonth = orderList.Count(order =>
             order.Status == OrderStatus.Delivered &&
@@ -382,22 +382,12 @@ public sealed class DiscordWebhookService
 
     private static bool IsOverdue(Order order, DateTime today)
     {
-        return order.ExpectedDate.HasValue && order.ExpectedDate.Value.Date < today;
+        return OrderState.IsOverdue(order.Status, order.ExpectedDate, today);
     }
 
     private static bool HasTracking(Order order)
     {
         return order.TrackingNumbers.Any(entry => !string.IsNullOrWhiteSpace(entry.Number));
-    }
-
-    private static bool IsFinalStatus(OrderStatus status)
-    {
-        return status is OrderStatus.Delivered or OrderStatus.Cancelled or OrderStatus.Returned;
-    }
-
-    private static bool IsOpenOrder(Order order)
-    {
-        return !IsFinalStatus(order.Status);
     }
 
     private static string FormatOrderReference(Order order)

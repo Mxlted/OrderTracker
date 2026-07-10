@@ -239,6 +239,12 @@ public sealed class Order : ObservableObject
             if (SetProperty(ref _status, value))
             {
                 OnPropertyChanged(nameof(IsCompleted));
+                OnPropertyChanged(nameof(IsFinal));
+                OnPropertyChanged(nameof(IsOpen));
+                OnPropertyChanged(nameof(CanMarkDelivered));
+                OnPropertyChanged(nameof(CanArchive));
+                OnPropertyChanged(nameof(HasPrimaryAction));
+                OnPropertyChanged(nameof(CanToggleDelivered));
                 OnPropertyChanged(nameof(PrimaryActionLabel));
                 OnPropertyChanged(nameof(PrimaryDateLabel));
                 OnPropertyChanged(nameof(SecondaryDateLabel));
@@ -431,14 +437,38 @@ public sealed class Order : ObservableObject
     public bool IsCompleted => Status == OrderStatus.Delivered;
 
     [JsonIgnore]
-    public string PrimaryActionLabel => Status == OrderStatus.Delivered ? "Archive" : "Mark delivered";
+    public bool IsFinal => OrderState.IsFinal(Status);
 
     [JsonIgnore]
-    public bool IsOverdue => !IsCompleted && ExpectedDate?.Date < DateTime.Today;
+    public bool IsOpen => OrderState.IsOpen(Status);
 
     [JsonIgnore]
-    public string PrimaryDateLabel => Status == OrderStatus.Delivered && DeliveredDate.HasValue
-        ? $"Delivered {DeliveredDate.Value:M/d/yy}"
+    public bool CanMarkDelivered => OrderState.CanMarkDelivered(Status);
+
+    [JsonIgnore]
+    public bool CanArchive => OrderState.CanArchive(Status);
+
+    [JsonIgnore]
+    public bool HasPrimaryAction => OrderState.HasPrimaryAction(Status);
+
+    [JsonIgnore]
+    public bool CanToggleDelivered => OrderState.CanToggleDelivered(Status);
+
+    [JsonIgnore]
+    public string PrimaryActionLabel => CanArchive
+        ? "Archive"
+        : CanMarkDelivered
+            ? "Mark delivered"
+            : string.Empty;
+
+    [JsonIgnore]
+    public bool IsOverdue => OrderState.IsOverdue(Status, ExpectedDate, DateTime.Today);
+
+    [JsonIgnore]
+    public string PrimaryDateLabel => Status == OrderStatus.Delivered
+        ? DeliveredDate.HasValue
+            ? $"Delivered {DeliveredDate.Value:M/d/yy}"
+            : "Delivered"
         : ExpectedDate.HasValue
             ? $"Expected {ExpectedDate.Value:M/d/yy}"
             : $"Ordered {OrderDate:M/d/yy}";

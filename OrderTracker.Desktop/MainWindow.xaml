@@ -2790,6 +2790,7 @@
                                                     Command="{Binding Data.PrimaryOrderActionCommand, Source={StaticResource VmProxy}}"
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource GridActionButtonStyle}"
+                                                    Visibility="{Binding HasPrimaryAction, Converter={StaticResource BoolToVisibility}}"
                                                     Margin="0,0,4,0"/>
                                             <Button Style="{StaticResource OverflowActionButtonStyle}"
                                                     Click="OpenRowContextMenu"/>

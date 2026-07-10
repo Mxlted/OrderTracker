@@ -185,8 +185,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloseOrderEditorCommand = new RelayCommand(_ => CloseOrderEditor(), _ => IsOrderEditorOpen);
         DeleteOrderCommand = new RelayCommand(parameter => DeleteOrder(parameter as Order), parameter => parameter is Order);
         DuplicateOrderCommand = new RelayCommand(parameter => DuplicateOrder(parameter as Order), parameter => parameter is Order);
-        ToggleCompletedCommand = new RelayCommand(parameter => ToggleCompleted(parameter as Order), parameter => parameter is Order);
-        PrimaryOrderActionCommand = new RelayCommand(parameter => RunPrimaryOrderAction(parameter as Order), parameter => parameter is Order { IsArchived: false });
+        ToggleCompletedCommand = new RelayCommand(
+            parameter => ToggleCompleted(parameter as Order),
+            parameter => parameter is Order { CanToggleDelivered: true });
+        PrimaryOrderActionCommand = new RelayCommand(
+            parameter => RunPrimaryOrderAction(parameter as Order),
+            parameter => parameter is Order { IsArchived: false, HasPrimaryAction: true });
         ArchiveCompletedOrdersCommand = new RelayCommand(_ => ArchiveCompletedOrders(), _ => CompletedOrdersReadyToArchiveCount > 0);
         RestoreOrderCommand = new RelayCommand(parameter => RestoreOrder(parameter as Order), parameter => parameter is Order { IsArchived: true });
         SelectVisibleOrdersCommand = new RelayCommand(_ => SelectOrders(OrdersView, true));
@@ -718,7 +722,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool ShowItemGroupHeaders => SelectedItemGroup != ItemGroupOption.None && PresetsView.Groups?.Count > 1;
 
-    public int CompletedOrdersReadyToArchiveCount => Orders.Count(order => order.Status == OrderStatus.Delivered && !order.IsArchived);
+    public int CompletedOrdersReadyToArchiveCount => Orders.Count(order => order.CanArchive && !order.IsArchived);
 
     public int ArchivedOrderCount => Orders.Count(order => order.IsArchived);
 
@@ -735,9 +739,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public int SelectedActiveOrderCount => Orders.Count(order => order.IsSelected && !order.IsArchived);
 
-    public int SelectedIncompleteActiveOrderCount => Orders.Count(order => order.IsSelected && !order.IsArchived && order.Status != OrderStatus.Delivered);
+    public int SelectedIncompleteActiveOrderCount => Orders.Count(order => order.IsSelected && !order.IsArchived && order.CanMarkDelivered);
 
-    public int SelectedCompletedActiveOrderCount => Orders.Count(order => order.IsSelected && !order.IsArchived && order.Status == OrderStatus.Delivered);
+    public int SelectedCompletedActiveOrderCount => Orders.Count(order => order.IsSelected && !order.IsArchived && order.CanArchive);
 
     public int SelectedArchivedOrderCount => Orders.Count(order => order.IsSelected && order.IsArchived);
 
@@ -821,11 +825,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public decimal FormSubtotal => FormItems.Sum(item => ParseQuantityPreview(item.QuantityInput) * ParseMoneyPreview(item.UnitPriceInput));
 
-    public decimal FormTotal => FormSubtotal + ParseMoneyPreview(FormShippingCostInput);
+    public decimal FormTotal => FormSubtotal +
+        ParseMoneyPreview(FormShippingCostInput) +
+        ParseMoneyPreview(FormTaxInput) +
+        ParseMoneyPreview(FormOtherCostInput);
 
-    public decimal FormEffectiveRoiPercent => ParseOptionalPreview(FormProjectedRoiPercentInput) ?? Settings.GetProjectedRoiPercent(FormMerchant);
+    public decimal FormEffectiveRoiPercent
+    {
+        get
+        {
+            var projectedProfitOverride = ParseOptionalMoneyPreview(FormProjectedProfitInput);
+            return projectedProfitOverride.HasValue
+                ? AppSettings.CalculateEffectiveProjectedRoiPercent(FormTotal, projectedProfitOverride.Value)
+                : ParseOptionalPercentPreview(FormProjectedRoiPercentInput) ?? Settings.GetProjectedRoiPercent(FormMerchant);
+        }
+    }
 
-    public decimal FormProjectedProfit => ParseOptionalPreview(FormProjectedProfitInput) ?? AppSettings.CalculateProjectedRoiAmount(FormTotal, FormEffectiveRoiPercent);
+    public decimal FormProjectedProfit => ParseOptionalMoneyPreview(FormProjectedProfitInput) ??
+        AppSettings.CalculateProjectedRoiAmount(FormTotal, FormEffectiveRoiPercent);
 
     public string FormProjectionSummary => $"Projected profit {FormProjectedProfit.ToString("C", CultureInfo.CurrentCulture)} at {FormEffectiveRoiPercent.ToString("0.##", CultureInfo.CurrentCulture)}%";
 
@@ -932,13 +949,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string FormTaxInput
     {
         get => _formTaxInput;
-        set => SetProperty(ref _formTaxInput, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formTaxInput, value ?? string.Empty))
+            {
+                RefreshOrderPreview();
+            }
+        }
     }
 
     public string FormOtherCostInput
     {
         get => _formOtherCostInput;
-        set => SetProperty(ref _formOtherCostInput, value ?? string.Empty);
+        set
+        {
+            if (SetProperty(ref _formOtherCostInput, value ?? string.Empty))
+            {
+                RefreshOrderPreview();
+            }
+        }
     }
 
     public decimal? FormProjectedRoiPercentOverride
@@ -1749,6 +1778,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        FormDeliveredDate = OrderState.GetCoherentDeliveredDate(FormStatus, FormDeliveredDate, DateTime.Today);
+
         var order = Orders.FirstOrDefault(candidate => candidate.Id == _editingOrderId);
         var isNew = order is null;
         order ??= new Order();
@@ -1851,6 +1882,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         if (!TryParseMoney(FormShippingCostInput, "shipping", out var shipping) ||
+            !TryParseMoney(FormTaxInput, "tax", out var tax) ||
             !TryParseOptionalMoney(FormProjectedProfitInput, "profit", out var projectedProfitOverride) ||
             !TryParseMoney(FormOtherCostInput, "other cost", out var otherCost))
         {
@@ -1865,6 +1897,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         FormShippingCost = shipping;
+        FormTax = tax;
         FormOtherCost = otherCost;
         FormProjectedProfitOverride = projectedProfitOverride;
         FormProjectedRoiPercentOverride = projectedProfitOverride.HasValue ? null : projectedRoiPercentOverride;
@@ -1954,7 +1987,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ToggleCompleted(Order? order)
     {
-        if (order is null)
+        if (order is null || !order.CanToggleDelivered)
         {
             return;
         }
@@ -1962,7 +1995,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var message = "Order updated.";
         RunWithOrderChangeNotificationsSuppressed(() =>
         {
-            if (order.Status == OrderStatus.Delivered)
+            if (order.CanArchive)
             {
                 order.Status = order.TrackingNumbers.Count > 0 ? OrderStatus.Shipped : OrderStatus.Ordered;
                 order.DeliveredDate = null;
@@ -1987,7 +2020,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void ArchiveCompletedOrders()
     {
         var candidates = Orders
-            .Where(order => order.Status == OrderStatus.Delivered && !order.IsArchived)
+            .Where(order => order.CanArchive && !order.IsArchived)
             .ToList();
 
         if (candidates.Count == 0)
@@ -2039,7 +2072,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         var label = DescribeOrder(order);
-        var message = HideCompleted && order.Status == OrderStatus.Delivered
+        var message = HideCompleted && order.IsFinal
             ? $"Restored {label}. Turn off Hide completed to view it in Orders."
             : $"Restored {label} to Orders.";
 
@@ -2078,9 +2111,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (order.Status != OrderStatus.Delivered)
+        if (order.CanMarkDelivered)
         {
             ToggleCompleted(order);
+            return;
+        }
+
+        if (!order.CanArchive)
+        {
             return;
         }
 
@@ -2160,7 +2198,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void MarkSelectedOrdersCompleted()
     {
         var candidates = Orders
-            .Where(order => order.IsSelected && !order.IsArchived && order.Status != OrderStatus.Delivered)
+            .Where(order => order.IsSelected && !order.IsArchived && order.CanMarkDelivered)
             .ToList();
 
         if (candidates.Count == 0)
@@ -2196,7 +2234,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void ArchiveSelectedCompletedOrders()
     {
         var candidates = Orders
-            .Where(order => order.IsSelected && !order.IsArchived && order.Status == OrderStatus.Delivered)
+            .Where(order => order.IsSelected && !order.IsArchived && order.CanArchive)
             .ToList();
 
         if (candidates.Count == 0)
@@ -2229,8 +2267,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         var noun = candidates.Count == 1 ? "order" : "orders";
-        var message = HideCompleted && candidates.Any(order => order.Status == OrderStatus.Delivered)
-            ? $"Restored {candidates.Count} {noun}. Turn off Hide completed to view completed orders."
+        var message = HideCompleted && candidates.Any(order => order.IsFinal)
+            ? $"Restored {candidates.Count} {noun}. Turn off Hide completed to view final orders."
             : $"Restored {candidates.Count} {noun} to Orders.";
 
         ShowConfirmation(
@@ -2562,13 +2600,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private static decimal ParseMoneyPreview(string input)
     {
-        return decimal.TryParse(input, NumberStyles.Currency, CultureInfo.CurrentCulture, out var current) ||
-               decimal.TryParse(input, NumberStyles.Currency, CultureInfo.InvariantCulture, out current)
-            ? Math.Max(0m, current)
+        return TryParseMoneyValue(input, out var value)
+            ? Math.Max(0m, value)
             : 0m;
     }
 
-    private static decimal? ParseOptionalPreview(string input)
+    private static decimal? ParseOptionalMoneyPreview(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return null;
+        }
+
+        return TryParseMoneyValue(input, out var value) && value >= 0m ? value : null;
+    }
+
+    private static decimal? ParseOptionalPercentPreview(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
         {
@@ -2610,9 +2657,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return true;
         }
 
-        if (decimal.TryParse(input, NumberStyles.Currency, CultureInfo.CurrentCulture, out value) ||
-            decimal.TryParse(input, NumberStyles.Currency, CultureInfo.InvariantCulture, out value))
+        if (TryParseMoneyValue(input, out value))
         {
+            if (value < 0m)
+            {
+                LastActionMessage = $"Enter a non-negative {label}.";
+                value = 0m;
+                return false;
+            }
+
             return true;
         }
 
@@ -2629,16 +2682,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return true;
         }
 
-        if (decimal.TryParse(input, NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue) ||
-            decimal.TryParse(input, NumberStyles.Currency, CultureInfo.InvariantCulture, out currentValue))
+        if (TryParseMoneyValue(input, out var currentValue))
         {
-            value = Math.Max(0m, currentValue);
+            if (currentValue < 0m)
+            {
+                LastActionMessage = $"Enter a non-negative {label}.";
+                value = null;
+                return false;
+            }
+
+            value = currentValue;
             return true;
         }
 
         LastActionMessage = $"Enter a valid {label}.";
         value = null;
         return false;
+    }
+
+    private static bool TryParseMoneyValue(string input, out decimal value)
+    {
+        return decimal.TryParse(input, NumberStyles.Currency, CultureInfo.CurrentCulture, out value) ||
+               decimal.TryParse(input, NumberStyles.Currency, CultureInfo.InvariantCulture, out value);
     }
 
     private bool TryParseOptionalPercent(string input, string label, out decimal? value)
@@ -3505,7 +3570,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        if (HideCompleted && order.Status == OrderStatus.Delivered)
+        if (HideCompleted && order.IsFinal)
         {
             return false;
         }
@@ -3513,9 +3578,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var today = DateTime.Today;
         var matchesAttentionFilter = SelectedAttentionFilter switch
         {
-            OrderAttentionFilter.Overdue => IsOpenOrder(order) && order.ExpectedDate?.Date < today,
-            OrderAttentionFilter.MissingTracking => IsOpenOrder(order) && !order.HasTrackingNumbers,
-            OrderAttentionFilter.ReadyToArchive => order.Status == OrderStatus.Delivered,
+            OrderAttentionFilter.Overdue => OrderState.IsOverdue(order.Status, order.ExpectedDate, today),
+            OrderAttentionFilter.MissingTracking => order.IsOpen && !order.HasTrackingNumbers,
+            OrderAttentionFilter.ReadyToArchive => order.CanArchive,
             _ => true
         };
 
@@ -4056,10 +4121,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private IEnumerable<SidebarPanelItem> BuildSidebarAlerts(IReadOnlyCollection<Order> orders)
     {
         var today = DateTime.Today;
-        var openOrders = orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var openOrders = orders.Where(order => !order.IsArchived && order.IsOpen).ToList();
         var alerts = new List<SidebarPanelItem>();
 
-        var overdueOrders = openOrders.Count(order => order.ExpectedDate?.Date < today);
+        var overdueOrders = openOrders.Count(order => OrderState.IsOverdue(order.Status, order.ExpectedDate, today));
         if (overdueOrders > 0)
         {
             alerts.Add(new SidebarPanelItem
@@ -4085,7 +4150,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             });
         }
 
-        var completedOrdersReadyToArchive = orders.Count(order => order.Status == OrderStatus.Delivered && !order.IsArchived);
+        var completedOrdersReadyToArchive = orders.Count(order => order.CanArchive && !order.IsArchived);
         if (completedOrdersReadyToArchive > 0)
         {
             alerts.Add(new SidebarPanelItem
@@ -4155,7 +4220,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var today = DateTime.Today;
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
-        var activeOpenOrders = orders.Where(order => !order.IsArchived && IsOpenOrder(order)).ToList();
+        var activeOpenOrders = orders.Where(order => !order.IsArchived && order.IsOpen).ToList();
         var openOrders = activeOpenOrders.Count;
         var openBalance = activeOpenOrders.Sum(order => order.TotalCost);
         var monthOrders = orders.Where(order => order.OrderDate >= monthStart && order.OrderDate < monthEnd).ToList();
@@ -4237,11 +4302,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private static string FormatPercent(decimal percent)
     {
         return string.Concat(Math.Max(0m, percent).ToString("0.##", CultureInfo.CurrentCulture), "%");
-    }
-
-    private static bool IsOpenOrder(Order order)
-    {
-        return order.Status is not OrderStatus.Delivered and not OrderStatus.Cancelled and not OrderStatus.Returned;
     }
 
     private IEnumerable<ChartPoint> BuildMonthlySpend(IReadOnlyCollection<Order> orders)
@@ -5049,6 +5109,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ArchivedOrderSummary));
         ((RelayCommand)ArchiveCompletedOrdersCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RestoreOrderCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ToggleCompletedCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)PrimaryOrderActionCommand).RaiseCanExecuteChanged();
         RefreshBulkSelectionState();
     }
 
