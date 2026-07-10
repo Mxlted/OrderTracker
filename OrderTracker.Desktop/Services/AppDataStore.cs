@@ -51,9 +51,9 @@ public sealed class AppDataStore
         try
         {
             var json = File.ReadAllText(DataFilePath);
-            var legacyOrderCreatedAt = File.GetLastWriteTime(DataFilePath);
+            var legacyCreatedAt = File.GetLastWriteTime(DataFilePath);
             var data = JsonSerializer.Deserialize<AppData>(json, _jsonOptions) ?? CreateDefaultData();
-            NormalizeLoadedData(data, legacyOrderCreatedAt);
+            NormalizeLoadedData(data, legacyCreatedAt);
             return data;
         }
         catch
@@ -85,7 +85,7 @@ public sealed class AppDataStore
         }
     }
 
-    private static void NormalizeLoadedData(AppData data, DateTime legacyOrderCreatedAt)
+    private static void NormalizeLoadedData(AppData data, DateTime legacyCreatedAt)
     {
         data.Settings ??= new AppSettings();
         data.Settings.Columns ??= new ColumnSettings();
@@ -101,7 +101,7 @@ public sealed class AppDataStore
         foreach (var order in data.Orders)
         {
             EnsureId(order);
-            EnsureCreatedAt(order, legacyOrderCreatedAt);
+            EnsureCreatedAt(order, legacyCreatedAt);
             order.NormalizeItemCollection();
             order.TrackingNumbers ??= new();
             order.TrackingNumbers = new ObservableCollection<TrackingEntry>(order.TrackingNumbers.OfType<TrackingEntry>());
@@ -111,6 +111,7 @@ public sealed class AppDataStore
         foreach (var preset in data.AccountPresets)
         {
             EnsureId(preset);
+            EnsureCreatedAt(preset, legacyCreatedAt);
         }
 
         foreach (var preset in data.ItemPresets)
@@ -188,6 +189,14 @@ public sealed class AppDataStore
         if (order.CreatedAt <= DateTime.MinValue.AddDays(1))
         {
             order.CreatedAt = legacyOrderCreatedAt;
+        }
+    }
+
+    private static void EnsureCreatedAt(AccountPreset preset, DateTime legacyCreatedAt)
+    {
+        if (preset.CreatedAt <= DateTime.MinValue.AddDays(1))
+        {
+            preset.CreatedAt = legacyCreatedAt;
         }
     }
 

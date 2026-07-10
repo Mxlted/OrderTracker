@@ -84,14 +84,16 @@ public enum AccountGroupOption
 
 public enum AccountSortOption
 {
-    NameAscending,
-    NameDescending,
-    EmailAscending,
-    EmailDescending,
-    MerchantAscending,
-    FavoritesFirst,
-    MostUsed,
-    LeastUsed
+    NameAscending = 0,
+    NameDescending = 1,
+    EmailAscending = 2,
+    EmailDescending = 3,
+    MerchantAscending = 4,
+    FavoritesFirst = 5,
+    MostUsed = 6,
+    LeastUsed = 7,
+    NewestCreated = 8,
+    OldestCreated = 9
 }
 
 public enum ItemGroupOption

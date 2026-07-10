@@ -1415,6 +1415,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var order = Orders.FirstOrDefault(candidate => candidate.Id == _editingOrderId);
         var isNew = order is null;
         order ??= new Order();
+        var previousAccountEmail = isNew ? string.Empty : order.AccountEmail;
 
         RunWithOrderChangeNotificationsSuppressed(() =>
         {
@@ -1425,6 +1426,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Orders.Add(order);
             }
         });
+
+        CountMatchingAccountUsage(previousAccountEmail, order);
 
         SelectedOrder = order;
         RefreshAfterOrderChange($"Order {(isNew ? "added" : "updated")}.");
@@ -1611,6 +1614,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
 
         RunWithOrderChangeNotificationsSuppressed(() => Orders.Add(copy));
+        CountMatchingAccountUsage(string.Empty, copy);
         BeginEditOrder(copy);
         RefreshAfterOrderChange("Duplicated order. Add the new order number and tracking when ready.");
     }
@@ -2373,14 +2377,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             FormMerchant = preset.MerchantHint;
         }
 
-        RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
-        if (SelectedAccountSort is AccountSortOption.MostUsed or AccountSortOption.LeastUsed ||
-            SelectedAccountGroup == AccountGroupOption.Usage)
-        {
-            AccountPresetsView.Refresh();
-            RefreshOrderAccountPresets();
-        }
-
         SelectedPage = AppPage.Orders;
         LastActionMessage = $"Applied account '{preset.DisplayName}'.";
         PersistIfNeeded();
@@ -2580,6 +2576,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             preset.Notes = AccountPresetNotes.Trim();
             if (isNew)
             {
+                preset.CreatedAt = DateTime.Now;
                 AccountPresets.Add(preset);
             }
         });
@@ -2635,6 +2632,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         var copy = new AccountPreset
         {
+            CreatedAt = DateTime.Now,
             Name = $"{preset.DisplayName} copy".Trim(),
             Email = preset.Email,
             MerchantHint = preset.MerchantHint,
@@ -3086,6 +3084,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return haystack.Contains(AccountPresetSearchText, StringComparison.OrdinalIgnoreCase);
     }
 
+    private void CountMatchingAccountUsage(string previousAccountEmail, Order order)
+    {
+        var accountEmail = order.AccountEmail.Trim();
+        if (string.IsNullOrWhiteSpace(accountEmail) ||
+            string.Equals(previousAccountEmail.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var preset = AccountPresets.FirstOrDefault(candidate =>
+            candidate.MerchantHint == order.Merchant &&
+            string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase)) ??
+            AccountPresets.FirstOrDefault(candidate =>
+                string.Equals(candidate.Email.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase));
+
+        if (preset is null)
+        {
+            return;
+        }
+
+        RunWithPresetChangeNotificationsSuppressed(() => preset.UsageCount++);
+        AccountPresetsView.Refresh();
+        RefreshOrderAccountPresets();
+    }
+
     private bool FilterOrderAccountPreset(object value)
     {
         return value is AccountPreset preset && IsOrderAccountPresetVisible(preset);
@@ -3267,6 +3290,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 new SortDescription(nameof(AccountPreset.DisplayName), ListSortDirection.Ascending),
                 new SortDescription(nameof(AccountPreset.Email), ListSortDirection.Ascending),
                 new SortDescription(nameof(AccountPreset.Id), ListSortDirection.Ascending)
+            },
+            AccountSortOption.NewestCreated => new[]
+            {
+                new SortDescription(nameof(AccountPreset.CreatedAt), ListSortDirection.Descending)
+            },
+            AccountSortOption.OldestCreated => new[]
+            {
+                new SortDescription(nameof(AccountPreset.CreatedAt), ListSortDirection.Ascending)
             },
             _ => new[]
             {

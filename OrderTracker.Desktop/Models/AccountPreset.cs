@@ -7,6 +7,7 @@ namespace OrderTracker.Desktop.Models;
 public sealed class AccountPreset : ObservableObject
 {
     private string _id = Guid.NewGuid().ToString("N");
+    private DateTime _createdAt = DateTime.MinValue;
     private string _name = string.Empty;
     private string _email = string.Empty;
     private MerchantKind _merchantHint = MerchantKind.Unknown;
@@ -19,6 +20,12 @@ public sealed class AccountPreset : ObservableObject
     {
         get => _id;
         set => SetProperty(ref _id, value ?? string.Empty);
+    }
+
+    public DateTime CreatedAt
+    {
+        get => _createdAt;
+        set => SetProperty(ref _createdAt, value);
     }
 
     public string Name
