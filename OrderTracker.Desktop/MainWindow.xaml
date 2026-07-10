@@ -1735,6 +1735,7 @@
 
         <Style x:Key="CellTextStyle" TargetType="{x:Type TextBlock}">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="FontSize" Value="{DynamicResource GridTextFontSize}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="TextWrapping" Value="NoWrap"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
@@ -2315,13 +2316,13 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="28,0,28,24">
+                <Grid x:Name="OrdersContentLayout" Grid.Row="1" Margin="28,0,28,24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition>
                             <ColumnDefinition.Width>
-                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="400,1420">
-                                    <Binding RelativeSource="{RelativeSource AncestorType={x:Type Window}}" Path="ActualWidth"/>
+                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="400,1000">
+                                    <Binding ElementName="OrdersContentLayout" Path="ActualWidth"/>
                                     <Binding Path="Data.IsOrderEditorOpen" Source="{StaticResource VmProxy}"/>
                                 </MultiBinding>
                             </ColumnDefinition.Width>
@@ -2551,7 +2552,7 @@
 
                             <DataGridTemplateColumn Header="Merchant"
                                                     Width="0.7*"
-                                                    MinWidth="64"
+                                                    MinWidth="60"
                                                     MaxWidth="92"
                                                     Visibility="{Binding Data.ShowOrderMerchantColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2620,8 +2621,9 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Account"
-                                                    Width="Auto"
-                                                    MinWidth="126"
+                                                    Width="1.05*"
+                                                    MinWidth="112"
+                                                    MaxWidth="180"
                                                     Visibility="{Binding Data.Settings.Columns.ShowAccount, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -2644,8 +2646,9 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Order"
-                                                    Width="Auto"
-                                                    MinWidth="124"
+                                                    Width="1.0*"
+                                                    MinWidth="110"
+                                                    MaxWidth="170"
                                                     Visibility="{Binding Data.Settings.Columns.ShowOrderNumber, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -2676,7 +2679,7 @@
 
                             <DataGridTemplateColumn Header="Items"
                                                     Width="1.3*"
-                                                    MinWidth="140"
+                                                    MinWidth="124"
                                                     MaxWidth="260"
                                                     Visibility="{Binding Data.Settings.Columns.ShowItem, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2707,7 +2710,7 @@
 
                             <DataGridTextColumn Header="Qty"
                                                 Width="Auto"
-                                                MinWidth="44"
+                                                MinWidth="40"
                                                 MaxWidth="54"
                                                 Binding="{Binding TotalQuantity, Mode=OneWay}"
                                                 ElementStyle="{StaticResource CompactCellTextStyle}"
@@ -2715,7 +2718,7 @@
 
                             <DataGridTemplateColumn Header="Status"
                                                     Width="0.95*"
-                                                    MinWidth="92"
+                                                    MinWidth="84"
                                                     MaxWidth="112"
                                                     Visibility="{Binding Data.Settings.Columns.ShowStatus, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2735,8 +2738,9 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Tracking"
-                                                    Width="Auto"
-                                                    MinWidth="150"
+                                                    Width="1.05*"
+                                                    MinWidth="120"
+                                                    MaxWidth="170"
                                                     Visibility="{Binding Data.Settings.Columns.ShowTracking, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -2766,7 +2770,7 @@
 
                             <DataGridTemplateColumn Header="Dates"
                                                     Width="1.0*"
-                                                    MinWidth="108"
+                                                    MinWidth="96"
                                                     MaxWidth="124"
                                                     Visibility="{Binding Data.Settings.Columns.ShowDates, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2794,7 +2798,7 @@
 
                             <DataGridTextColumn Header="Total"
                                                 Width="0.65*"
-                                                MinWidth="74"
+                                                MinWidth="68"
                                                 MaxWidth="88"
                                                 Binding="{Binding TotalCost, StringFormat=C, Mode=OneWay}"
                                                 ElementStyle="{StaticResource CompactCellTextWithToolTipStyle}"
@@ -2802,7 +2806,7 @@
 
                             <DataGridTemplateColumn Header="Actions"
                                                     Width="1.15*"
-                                                    MinWidth="152"
+                                                    MinWidth="144"
                                                     MaxWidth="180"
                                                     CellStyle="{StaticResource ActionCellStyle}"
                                                     Visibility="{Binding Data.Settings.Columns.ShowActions, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
@@ -3568,13 +3572,13 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="28,0,28,24">
+                <Grid x:Name="AccountsContentLayout" Grid.Row="1" Margin="28,0,28,24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition>
                             <ColumnDefinition.Width>
-                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="380,1380">
-                                    <Binding RelativeSource="{RelativeSource AncestorType={x:Type Window}}" Path="ActualWidth"/>
+                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="380,650">
+                                    <Binding ElementName="AccountsContentLayout" Path="ActualWidth"/>
                                     <Binding Path="Data.IsAccountPresetEditorOpen" Source="{StaticResource VmProxy}"/>
                                 </MultiBinding>
                             </ColumnDefinition.Width>
@@ -3978,13 +3982,13 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="28,0,28,24">
+                <Grid x:Name="ItemsContentLayout" Grid.Row="1" Margin="28,0,28,24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition>
                             <ColumnDefinition.Width>
-                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="380,1380">
-                                    <Binding RelativeSource="{RelativeSource AncestorType={x:Type Window}}" Path="ActualWidth"/>
+                                <MultiBinding Converter="{StaticResource AdaptiveEditorReserveWidth}" ConverterParameter="380,650">
+                                    <Binding ElementName="ItemsContentLayout" Path="ActualWidth"/>
                                     <Binding Path="Data.IsPresetEditorOpen" Source="{StaticResource VmProxy}"/>
                                 </MultiBinding>
                             </ColumnDefinition.Width>

@@ -17,11 +17,13 @@ public sealed class AdaptiveEditorReserveWidthConverter : IMultiValueConverter
         var editorWidth = parts.Length > 0 && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedWidth)
             ? parsedWidth
             : 400d;
-        var reserveThreshold = parts.Length > 1 && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedThreshold)
-            ? parsedThreshold
-            : 1420d;
+        var minimumGridWidth = parts.Length > 1 && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedMinimumGridWidth)
+            ? parsedMinimumGridWidth
+            : 900d;
 
-        return availableWidth >= reserveThreshold ? new GridLength(editorWidth) : new GridLength(0);
+        return double.IsFinite(availableWidth) && availableWidth - editorWidth >= minimumGridWidth
+            ? new GridLength(editorWidth)
+            : new GridLength(0);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

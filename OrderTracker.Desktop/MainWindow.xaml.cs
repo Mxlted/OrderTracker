@@ -353,6 +353,8 @@ public partial class MainWindow : Window
     {
         private const double MinimumStarWeight = 1;
         private const double DefaultUnboundedStarWeightCap = 360;
+        private static readonly DependencyPropertyDescriptor? ColumnVisibilityDescriptor =
+            DependencyPropertyDescriptor.FromProperty(DataGridColumn.VisibilityProperty, typeof(DataGridColumn));
 
         private readonly MainWindow _owner;
         private readonly DataGrid _grid;
@@ -373,6 +375,10 @@ public partial class MainWindow : Window
             _grid.Loaded += GridLoaded;
             _grid.IsVisibleChanged += GridIsVisibleChanged;
             _grid.SizeChanged += GridSizeChanged;
+            foreach (var column in _grid.Columns)
+            {
+                ColumnVisibilityDescriptor?.AddValueChanged(column, ColumnVisibilityChanged);
+            }
             QueueInitialize(DispatcherPriority.Loaded);
         }
 
@@ -382,6 +388,10 @@ public partial class MainWindow : Window
             _grid.Loaded -= GridLoaded;
             _grid.IsVisibleChanged -= GridIsVisibleChanged;
             _grid.SizeChanged -= GridSizeChanged;
+            foreach (var column in _grid.Columns)
+            {
+                ColumnVisibilityDescriptor?.RemoveValueChanged(column, ColumnVisibilityChanged);
+            }
         }
 
         private void QueueInitialize(DispatcherPriority priority)
@@ -451,6 +461,33 @@ public partial class MainWindow : Window
             _isInitialized = true;
         }
 
+        private void QueueNormalizeVisibleColumns()
+        {
+            if (_isDetached || !_isInitialized || _isApplyQueued)
+            {
+                return;
+            }
+
+            _isApplyQueued = true;
+            _owner.Dispatcher.BeginInvoke(
+                (Action)(() =>
+                {
+                    _isApplyQueued = false;
+                    if (_isDetached || !_isInitialized || !CanInitialize())
+                    {
+                        return;
+                    }
+
+                    foreach (var column in _grid.Columns.Where(column =>
+                                 column.Visibility == Visibility.Visible &&
+                                 column.Width.UnitType != DataGridLengthUnitType.Star))
+                    {
+                        column.Width = new DataGridLength(GetResponsiveStarWeight(column), DataGridLengthUnitType.Star);
+                    }
+                }),
+                DispatcherPriority.ContextIdle);
+        }
+
         private bool CanInitialize()
         {
             return _grid.IsLoaded &&
@@ -489,7 +526,19 @@ public partial class MainWindow : Window
 
         private void GridSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            QueueInitialize(DispatcherPriority.Loaded);
+            if (_isInitialized)
+            {
+                QueueNormalizeVisibleColumns();
+            }
+            else
+            {
+                QueueInitialize(DispatcherPriority.Loaded);
+            }
+        }
+
+        private void ColumnVisibilityChanged(object? sender, EventArgs e)
+        {
+            QueueNormalizeVisibleColumns();
         }
     }
 
