@@ -1164,9 +1164,7 @@
                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
                                    FontSize="10.5"
                                    FontStretch="SemiCondensed"
-                                   MaxWidth="170"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"/>
+                                   VerticalAlignment="Center"/>
                     </Button>
                     <Button x:Name="TrackingCopyButton"
                             Grid.Column="2"
@@ -2186,7 +2184,7 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <TextBlock Text="Bars share one dollar scale; exact monthly amounts are shown beside each bar."
+                                <TextBlock Text="Each series uses its own monthly scale; exact amounts are shown beside each bar."
                                            Style="{StaticResource MutedTextStyle}"
                                            FontSize="11"
                                            Margin="0,1,0,0"/>
@@ -2745,9 +2743,8 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Tracking"
-                                                    Width="1.05*"
+                                                    Width="Auto"
                                                     MinWidth="120"
-                                                    MaxWidth="170"
                                                     Visibility="{Binding Data.Settings.Columns.ShowTracking, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibility}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>

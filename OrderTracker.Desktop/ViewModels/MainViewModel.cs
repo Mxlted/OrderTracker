@@ -4491,13 +4491,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             })
             .ToList();
 
-        var sharedMaximum = Math.Max(
-            0m,
-            points.Max(point => Math.Max(point.Spend, point.ProjectedRoi)));
+        var spendMaximum = Math.Max(0m, points.Max(point => point.Spend));
+        var roiMaximum = Math.Max(0m, points.Max(point => point.ProjectedRoi));
         foreach (var point in points)
         {
-            point.SpendPercent = sharedMaximum <= 0m ? 0d : (double)(point.Spend / sharedMaximum * 100m);
-            point.RoiPercent = sharedMaximum <= 0m ? 0d : (double)(point.ProjectedRoi / sharedMaximum * 100m);
+            point.SpendPercent = spendMaximum <= 0m ? 0d : (double)(point.Spend / spendMaximum * 100m);
+            point.RoiPercent = roiMaximum <= 0m ? 0d : (double)(point.ProjectedRoi / roiMaximum * 100m);
         }
 
         return points;
