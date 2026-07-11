@@ -28,7 +28,10 @@ public sealed class BrowserLauncher
     private const int SmCyVirtualScreen = 79;
 
     private readonly ConcurrentDictionary<string, BrowserWindowReference> _openLinkWindows = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _windowActivityLock = new();
     private IntPtr _lastActiveLinkWindowHandle;
+    private BrowserWindowReference? _lastActiveLinkWindow;
+    private BrowserWindowBounds? _lastActiveLinkWindowBounds;
 
     public string OpenUrl(string url, AppSettings settings, BrowserSessionContext? sessionContext = null)
     {
@@ -196,8 +199,9 @@ public sealed class BrowserLauncher
         var process = Process.Start(startInfo);
         if (process is not null)
         {
-            var reference = new BrowserWindowReference(process, IntPtr.Zero, sessionDirectory);
+            var reference = new BrowserWindowReference(process, IntPtr.Zero, sessionDirectory, launchBounds);
             TrackWindowReference(windowKey, reference);
+            MarkWindowActive(reference, IntPtr.Zero, launchBounds, settings);
             _ = Task.Run(() => CompleteWindowTracking(
                 windowKey,
                 reference,
@@ -226,20 +230,19 @@ public sealed class BrowserLauncher
             {
                 if (!IsWindow(windowHandle))
                 {
-                    RemoveTrackedWindow(windowKey);
+                    RemoveTrackedWindow(windowKey, reference, settings);
                     return false;
                 }
 
                 BringWindowToFront(windowHandle);
-                _lastActiveLinkWindowHandle = windowHandle;
-                RememberWindowBounds(windowHandle, settings);
+                MarkWindowActive(reference, windowHandle, GetUsableWindowBounds(windowHandle), settings);
                 message = $"Brought existing {uri.Host} window to the front.";
                 return true;
             }
 
             if (reference.Process is null)
             {
-                RemoveTrackedWindow(windowKey);
+                RemoveTrackedWindow(windowKey, reference, settings);
                 return false;
             }
 
@@ -247,7 +250,7 @@ public sealed class BrowserLauncher
 
             if (reference.Process.HasExited)
             {
-                RemoveTrackedWindow(windowKey);
+                RemoveTrackedWindow(windowKey, reference, settings);
                 return false;
             }
 
@@ -261,28 +264,95 @@ public sealed class BrowserLauncher
             }
 
             BringWindowToFront(windowHandle);
-            _lastActiveLinkWindowHandle = windowHandle;
-            RememberWindowBounds(windowHandle, settings);
+            MarkWindowActive(reference, windowHandle, GetUsableWindowBounds(windowHandle), settings);
             message = $"Brought existing {uri.Host} window to the front.";
             return true;
         }
         catch
         {
-            RemoveTrackedWindow(windowKey);
+            RemoveTrackedWindow(windowKey, reference, settings);
             return false;
         }
     }
 
-    private void RemoveTrackedWindow(string windowKey)
+    private void RemoveTrackedWindow(
+        string windowKey,
+        BrowserWindowReference? expectedReference = null,
+        AppSettings? settings = null)
     {
-        if (_openLinkWindows.TryRemove(windowKey, out var reference))
+        if (!_openLinkWindows.TryGetValue(windowKey, out var reference) ||
+            (expectedReference is not null && !ReferenceEquals(reference, expectedReference)) ||
+            !_openLinkWindows.TryRemove(new KeyValuePair<string, BrowserWindowReference>(windowKey, reference)))
         {
-            if (reference.WindowHandle == _lastActiveLinkWindowHandle)
+            return;
+        }
+
+        BrowserWindowBounds? lastActiveBounds = null;
+        lock (_windowActivityLock)
+        {
+            if (ReferenceEquals(reference, _lastActiveLinkWindow))
             {
                 _lastActiveLinkWindowHandle = IntPtr.Zero;
+                if (reference.LastKnownBounds is { } bounds)
+                {
+                    _lastActiveLinkWindowBounds = bounds;
+                    lastActiveBounds = bounds;
+                }
+            }
+        }
+
+        if (settings is not null && lastActiveBounds is { } rememberedBounds)
+        {
+            RememberWindowBounds(rememberedBounds, settings);
+        }
+
+        reference.Dispose();
+    }
+
+    private void MarkWindowActive(
+        BrowserWindowReference reference,
+        IntPtr windowHandle,
+        BrowserWindowBounds? bounds,
+        AppSettings settings,
+        bool persistBounds = true)
+    {
+        lock (_windowActivityLock)
+        {
+            if (windowHandle != IntPtr.Zero)
+            {
+                reference.WindowHandle = windowHandle;
             }
 
-            reference.Dispose();
+            if (bounds is { } currentBounds)
+            {
+                reference.LastKnownBounds = currentBounds;
+                _lastActiveLinkWindowBounds = currentBounds;
+            }
+
+            _lastActiveLinkWindow = reference;
+            _lastActiveLinkWindowHandle = windowHandle;
+        }
+
+        if (persistBounds && bounds is { } rememberedBounds)
+        {
+            RememberWindowBounds(rememberedBounds, settings);
+        }
+    }
+
+    private void UpdateLastKnownBounds(BrowserWindowReference? reference, BrowserWindowBounds? bounds)
+    {
+        if (reference is null || bounds is not { } currentBounds)
+        {
+            return;
+        }
+
+        lock (_windowActivityLock)
+        {
+            reference.LastKnownBounds = currentBounds;
+            if (ReferenceEquals(reference, _lastActiveLinkWindow))
+            {
+                _lastActiveLinkWindowBounds = currentBounds;
+            }
         }
     }
 
@@ -328,16 +398,49 @@ public sealed class BrowserLauncher
 
             reference.WindowHandle = windowHandle;
             ApplyWindowBounds(windowHandle, launchBounds);
-            _lastActiveLinkWindowHandle = windowHandle;
-            RememberWindowBounds(windowHandle, settings);
+            MarkWindowActive(reference, windowHandle, GetUsableWindowBounds(windowHandle) ?? launchBounds, settings);
+            _ = MonitorTrackedWindowAsync(windowKey, reference, settings);
         }
         catch
         {
             if (_openLinkWindows.TryGetValue(windowKey, out var currentReference) &&
                 ReferenceEquals(currentReference, reference))
             {
-                RemoveTrackedWindow(windowKey);
+                RemoveTrackedWindow(windowKey, reference, settings);
             }
+        }
+    }
+
+    private async Task MonitorTrackedWindowAsync(
+        string windowKey,
+        BrowserWindowReference reference,
+        AppSettings settings)
+    {
+        try
+        {
+            while (_openLinkWindows.TryGetValue(windowKey, out var currentReference) &&
+                   ReferenceEquals(currentReference, reference) &&
+                   reference.WindowHandle != IntPtr.Zero &&
+                   IsWindow(reference.WindowHandle))
+            {
+                var bounds = GetUsableWindowBounds(reference.WindowHandle);
+                UpdateLastKnownBounds(reference, bounds);
+
+                if (GetForegroundWindow() == reference.WindowHandle)
+                {
+                    MarkWindowActive(reference, reference.WindowHandle, bounds, settings, persistBounds: false);
+                }
+
+                await Task.Delay(250).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Window monitoring is best-effort; the cached bounds still remain usable.
+        }
+        finally
+        {
+            RemoveTrackedWindow(windowKey, reference, settings);
         }
     }
 
@@ -368,23 +471,34 @@ public sealed class BrowserLauncher
 
     private void RememberLastActiveWindowBounds(AppSettings settings)
     {
-        if (_lastActiveLinkWindowHandle != IntPtr.Zero && IsWindow(_lastActiveLinkWindowHandle))
+        BrowserWindowReference? reference;
+        IntPtr windowHandle;
+        BrowserWindowBounds? bounds;
+        lock (_windowActivityLock)
         {
-            RememberWindowBounds(_lastActiveLinkWindowHandle, settings);
+            reference = _lastActiveLinkWindow;
+            windowHandle = _lastActiveLinkWindowHandle;
+            bounds = _lastActiveLinkWindowBounds;
+        }
+
+        var liveBounds = GetUsableWindowBounds(windowHandle);
+        if (liveBounds is { } currentBounds)
+        {
+            UpdateLastKnownBounds(reference, currentBounds);
+            RememberWindowBounds(currentBounds, settings);
+        }
+        else if (bounds is { } cachedBounds)
+        {
+            RememberWindowBounds(cachedBounds, settings);
         }
     }
 
-    private static void RememberWindowBounds(IntPtr windowHandle, AppSettings settings)
+    private static void RememberWindowBounds(BrowserWindowBounds bounds, AppSettings settings)
     {
-        if (!TryGetWindowBounds(windowHandle, out var left, out var top, out var width, out var height))
-        {
-            return;
-        }
-
-        if (!IsUsableWindowSize(width, height))
-        {
-            return;
-        }
+        var left = bounds.Left;
+        var top = bounds.Top;
+        var width = bounds.Width;
+        var height = bounds.Height;
 
         if (settings.BrowserLinkWindowWidth != width)
         {
@@ -409,65 +523,18 @@ public sealed class BrowserLauncher
 
     private BrowserWindowBounds? GetNextLaunchBounds(BrowserWindowBounds? rememberedBounds)
     {
-        if (!TryGetTrackedOpenWindowBounds(out var trackedBounds))
+        BrowserWindowBounds? lastActiveBounds;
+        lock (_windowActivityLock)
+        {
+            lastActiveBounds = _lastActiveLinkWindowBounds;
+        }
+
+        if (lastActiveBounds is not { } trackedBounds)
         {
             return rememberedBounds;
         }
 
         return CascadeWindowBounds(trackedBounds);
-    }
-
-    private bool TryGetTrackedOpenWindowBounds(out BrowserWindowBounds bounds)
-    {
-        if (TryGetUsableWindowBounds(_lastActiveLinkWindowHandle, out bounds))
-        {
-            return true;
-        }
-
-        foreach (var pair in _openLinkWindows.ToArray())
-        {
-            if (pair.Value.WindowHandle != IntPtr.Zero)
-            {
-                if (TryGetUsableWindowBounds(pair.Value.WindowHandle, out bounds))
-                {
-                    _lastActiveLinkWindowHandle = pair.Value.WindowHandle;
-                    return true;
-                }
-
-                RemoveTrackedWindow(pair.Key);
-                continue;
-            }
-
-            if (pair.Value.Process is null)
-            {
-                RemoveTrackedWindow(pair.Key);
-                continue;
-            }
-
-            try
-            {
-                pair.Value.Process.Refresh();
-                if (!pair.Value.Process.HasExited)
-                {
-                    var windowHandle = GetMainWindowHandleIfReady(pair.Value.Process);
-                    pair.Value.WindowHandle = windowHandle;
-
-                    if (TryGetUsableWindowBounds(windowHandle, out bounds))
-                    {
-                        _lastActiveLinkWindowHandle = windowHandle;
-                        return true;
-                    }
-                }
-            }
-            catch
-            {
-                RemoveTrackedWindow(pair.Key);
-            }
-        }
-
-        _lastActiveLinkWindowHandle = IntPtr.Zero;
-        bounds = default;
-        return false;
     }
 
     private static BrowserWindowBounds? GetRememberedWindowBounds(AppSettings settings)
@@ -596,20 +663,17 @@ public sealed class BrowserLauncher
         return true;
     }
 
-    private static bool TryGetUsableWindowBounds(IntPtr windowHandle, out BrowserWindowBounds bounds)
+    private static BrowserWindowBounds? GetUsableWindowBounds(IntPtr windowHandle)
     {
-        bounds = default;
-
         if (windowHandle == IntPtr.Zero ||
             !IsWindow(windowHandle) ||
             !TryGetWindowBounds(windowHandle, out var left, out var top, out var width, out var height) ||
             !IsUsableWindowSize(width, height))
         {
-            return false;
+            return null;
         }
 
-        bounds = new BrowserWindowBounds(left, top, width, height);
-        return true;
+        return new BrowserWindowBounds(left, top, width, height);
     }
 
     private static bool IsUsableWindowSize(int width, int height)
@@ -1054,6 +1118,9 @@ public sealed class BrowserLauncher
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
@@ -1083,11 +1150,16 @@ public sealed class BrowserLauncher
 
     private sealed class BrowserWindowReference : IDisposable
     {
-        public BrowserWindowReference(Process? process, IntPtr windowHandle, string? sessionDirectory)
+        public BrowserWindowReference(
+            Process? process,
+            IntPtr windowHandle,
+            string? sessionDirectory,
+            BrowserWindowBounds? lastKnownBounds)
         {
             Process = process;
             WindowHandle = windowHandle;
             SessionDirectory = sessionDirectory;
+            LastKnownBounds = lastKnownBounds;
         }
 
         public Process? Process { get; }
@@ -1095,6 +1167,8 @@ public sealed class BrowserLauncher
         public string? SessionDirectory { get; }
 
         public IntPtr WindowHandle { get; set; }
+
+        public BrowserWindowBounds? LastKnownBounds { get; set; }
 
         public void Dispose()
         {
