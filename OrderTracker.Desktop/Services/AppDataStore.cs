@@ -2,14 +2,43 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using OrderTracker.Desktop.Models;
 
 namespace OrderTracker.Desktop.Services;
 
+public enum DataLoadStatus
+{
+    Loaded,
+    Missing,
+    Recovered,
+    Failed
+}
+
+public sealed record DataLoadResult(
+    AppData Data,
+    DataLoadStatus Status,
+    string? Message = null,
+    string? BackupPath = null,
+    int SkippedRows = 0,
+    int SubstitutedValues = 0,
+    bool IsReadOnly = false);
+
 public sealed class AppDataStore
 {
+    public const int CurrentSchemaVersion = 1;
+
+    private const int RetainedBackupCount = 5;
+    private static readonly TimeSpan[] ReadRetryDelays =
+    {
+        TimeSpan.FromMilliseconds(200),
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromMilliseconds(1000)
+    };
+
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -29,65 +58,148 @@ public sealed class AppDataStore
             new SafeEnumJsonConverter<ItemSortOption>(ItemSortOption.MostUsed),
             new SafeEnumJsonConverter<OrderStatus>(OrderStatus.Ordered),
             new SafeEnumJsonConverter<CarrierKind>(CarrierKind.Unknown),
+            new SafeEnumJsonConverter<OrderAttentionFilter>(OrderAttentionFilter.All),
             new JsonStringEnumConverter()
         }
     };
 
-    public string DataFilePath { get; }
+    public string DataFilePath { get; } = AppPaths.DataFile;
 
-    public AppDataStore()
+    public DataLoadResult Load()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var folder = Path.Combine(appData, "OrderTrackerDesktop");
-        DataFilePath = Path.Combine(folder, "orders.json");
-    }
-
-    public AppData Load()
-    {
-        if (!File.Exists(DataFilePath))
-        {
-            return CreateDefaultData();
-        }
+        CleanUpOrphanedFiles();
+        JsonReadDiagnostics.Reset();
 
         try
         {
-            var json = File.ReadAllText(DataFilePath);
+            var json = ReadDataFileWithRetry();
             var legacyCreatedAt = File.GetLastWriteTime(DataFilePath);
-            var data = JsonSerializer.Deserialize<AppData>(json, _jsonOptions) ?? CreateDefaultData();
+            var data = JsonSerializer.Deserialize<AppData>(json, _jsonOptions)
+                ?? throw new JsonException("Expected application data object.");
             NormalizeLoadedData(data, legacyCreatedAt);
-            return data;
+
+            var skippedRows = JsonReadDiagnostics.SkippedElements;
+            var substitutedValues = JsonReadDiagnostics.SubstitutedValues;
+            var backupPath = skippedRows > 0 || substitutedValues > 0
+                ? TryBackUpBeforeRepair()
+                : null;
+            var isNewerSchema = data.SchemaVersion > CurrentSchemaVersion;
+            var message = isNewerSchema
+                ? "This data file was written by a newer version of Order Tracker. Changes will not be saved."
+                : null;
+
+            return new DataLoadResult(
+                data,
+                DataLoadStatus.Loaded,
+                message,
+                backupPath,
+                skippedRows,
+                substitutedValues,
+                isNewerSchema);
         }
-        catch
+        catch (FileNotFoundException)
         {
-            TryBackUpUnreadableDataFile();
-            return CreateDefaultData();
+            return new DataLoadResult(CreateDefaultData(), DataLoadStatus.Missing);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return new DataLoadResult(CreateDefaultData(), DataLoadStatus.Missing);
+        }
+        catch (JsonException ex)
+        {
+            var backupPath = TryBackUpUnreadableDataFile();
+            return new DataLoadResult(
+                CreateDefaultData(),
+                DataLoadStatus.Recovered,
+                ex.Message,
+                backupPath);
+        }
+        catch (Exception ex)
+        {
+            return new DataLoadResult(
+                CreateDefaultData(),
+                DataLoadStatus.Failed,
+                ex.Message,
+                IsReadOnly: true);
         }
     }
 
     public void Save(AppData data)
     {
-        var folder = Path.GetDirectoryName(DataFilePath);
-        if (!string.IsNullOrWhiteSpace(folder))
-        {
-            Directory.CreateDirectory(folder);
-        }
+        Directory.CreateDirectory(AppPaths.RootFolder);
+        data.SchemaVersion = CurrentSchemaVersion;
 
         var json = JsonSerializer.Serialize(data, _jsonOptions);
-        var tempPath = $"{DataFilePath}.{Guid.NewGuid():N}.tmp";
+        var jsonBytes = Encoding.UTF8.GetBytes(json);
+        if (File.Exists(DataFilePath) && File.ReadAllBytes(DataFilePath).SequenceEqual(jsonBytes))
+        {
+            return;
+        }
 
+        var tempPath = $"{DataFilePath}.{Guid.NewGuid():N}.tmp";
         try
         {
-            File.WriteAllText(tempPath, json);
-            File.Move(tempPath, DataFilePath, overwrite: true);
+            using (var stream = new FileStream(
+                tempPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                FileOptions.WriteThrough))
+            {
+                stream.Write(jsonBytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (File.Exists(DataFilePath))
+            {
+                RotateBackups();
+                try
+                {
+                    File.Replace(tempPath, DataFilePath, $"{DataFilePath}.bak", ignoreMetadataErrors: true);
+                }
+                catch
+                {
+                    File.Move(tempPath, DataFilePath, overwrite: true);
+                }
+            }
+            else
+            {
+                File.Move(tempPath, DataFilePath);
+            }
         }
         finally
         {
-            TryDeleteTemporaryFile(tempPath);
+            TryDeleteFile(tempPath);
+        }
+    }
+
+    private string ReadDataFileWithRetry()
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return File.ReadAllText(DataFilePath);
+            }
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException &&
+                ex is not FileNotFoundException &&
+                ex is not DirectoryNotFoundException &&
+                attempt < ReadRetryDelays.Length)
+            {
+                Thread.Sleep(ReadRetryDelays[attempt]);
+            }
         }
     }
 
     private static void NormalizeLoadedData(AppData data, DateTime legacyCreatedAt)
     {
+        if (data.SchemaVersion < 1)
+        {
+            data.SchemaVersion = 1;
+        }
+
         data.Settings ??= new AppSettings();
         data.Settings.Columns ??= new ColumnSettings();
         if (data.Settings.UiExperienceVersion < 1)
@@ -95,6 +207,7 @@ public sealed class AppDataStore
             data.Settings.ItemSort = ItemSortOption.MostUsed;
             data.Settings.UiExperienceVersion = 1;
         }
+
         NormalizeMerchantProjectedRoiPercents(data.Settings);
         data.Orders ??= new();
         data.AccountPresets ??= new();
@@ -206,36 +319,120 @@ public sealed class AppDataStore
         }
     }
 
-    private void TryBackUpUnreadableDataFile()
+    private string? TryBackUpUnreadableDataFile()
+    {
+        if (!File.Exists(DataFilePath))
+        {
+            return null;
+        }
+
+        var backupPath = $"{DataFilePath}.broken-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
+        try
+        {
+            File.Copy(DataFilePath, backupPath, overwrite: false);
+            return backupPath;
+        }
+        catch
+        {
+            try
+            {
+                File.Move(DataFilePath, backupPath);
+                return backupPath;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    private string? TryBackUpBeforeRepair()
     {
         try
         {
-            if (!File.Exists(DataFilePath))
+            var backupPath = Path.Combine(
+                AppPaths.RootFolder,
+                $"orders.pre-repair-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+            File.Copy(DataFilePath, backupPath, overwrite: false);
+            return backupPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void RotateBackups()
+    {
+        try
+        {
+            TryDeleteFile($"{DataFilePath}.bak.{RetainedBackupCount - 1}");
+            for (var index = RetainedBackupCount - 2; index >= 0; index--)
+            {
+                var sourcePath = index == 0
+                    ? $"{DataFilePath}.bak"
+                    : $"{DataFilePath}.bak.{index}";
+                var destinationPath = $"{DataFilePath}.bak.{index + 1}";
+                if (File.Exists(sourcePath))
+                {
+                    File.Move(sourcePath, destinationPath, overwrite: true);
+                }
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private void CleanUpOrphanedFiles()
+    {
+        try
+        {
+            if (!Directory.Exists(AppPaths.RootFolder))
             {
                 return;
             }
 
-            var backupPath = $"{DataFilePath}.broken-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
-            File.Copy(DataFilePath, backupPath, overwrite: false);
-        }
-        catch
-        {
-            // Loading should still recover even if backup creation fails.
-        }
-    }
-
-    private static void TryDeleteTemporaryFile(string tempPath)
-    {
-        try
-        {
-            if (File.Exists(tempPath))
+            var cutoff = DateTime.UtcNow.AddDays(-1);
+            foreach (var tempPath in Directory.EnumerateFiles(AppPaths.RootFolder, "orders.json.*.tmp"))
             {
-                File.Delete(tempPath);
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(tempPath) < cutoff)
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            var brokenFiles = Directory.EnumerateFiles(AppPaths.RootFolder, "*.broken-*")
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .Skip(RetainedBackupCount);
+            foreach (var file in brokenFiles)
+            {
+                TryDeleteFile(file.FullName);
             }
         }
         catch
         {
-            // A stale temp file is less harmful than hiding the original save error.
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
         }
     }
 }

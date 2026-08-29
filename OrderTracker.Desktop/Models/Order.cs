@@ -29,6 +29,7 @@ public sealed class Order : ObservableObject
     private DateTime? _expectedDate;
     private DateTime? _deliveredDate;
     private OrderStatus _status = OrderStatus.Ordered;
+    private OrderStatus? _statusBeforeDelivered;
     private string _trackingStatus = string.Empty;
     private string _notes = string.Empty;
     private bool _isItemsExpanded;
@@ -197,6 +198,7 @@ public sealed class Order : ObservableObject
                 OnPropertyChanged(nameof(OrderYear));
                 OnPropertyChanged(nameof(PrimaryDateLabel));
                 OnPropertyChanged(nameof(SecondaryDateLabel));
+                OnPropertyChanged(nameof(CompletedDate));
             }
         }
     }
@@ -227,6 +229,7 @@ public sealed class Order : ObservableObject
                 OnPropertyChanged(nameof(PrimaryDateLabel));
                 OnPropertyChanged(nameof(SecondaryDateLabel));
                 OnPropertyChanged(nameof(HasSecondaryDate));
+                OnPropertyChanged(nameof(CompletedDate));
             }
         }
     }
@@ -252,6 +255,12 @@ public sealed class Order : ObservableObject
                 OnPropertyChanged(nameof(IsOverdue));
             }
         }
+    }
+
+    public OrderStatus? StatusBeforeDelivered
+    {
+        get => _statusBeforeDelivered;
+        set => SetProperty(ref _statusBeforeDelivered, value);
     }
 
     public string TrackingStatus
@@ -489,6 +498,9 @@ public sealed class Order : ObservableObject
 
     [JsonIgnore]
     public DateTime ExpectedSortDate => ExpectedDate ?? DateTime.MaxValue;
+
+    [JsonIgnore]
+    public DateTime CompletedDate => DeliveredDate ?? OrderDate;
 
     public void RefreshDateDependentProperties()
     {

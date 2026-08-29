@@ -14,6 +14,12 @@ public sealed class ResponsiveItemWidthConverter : IValueConverter
         }
 
         var mode = parameter?.ToString();
+        if (string.Equals(mode, "OrderSearch", StringComparison.OrdinalIgnoreCase))
+        {
+            var reservedWidth = availableWidth >= 1100d ? 650d : 34d;
+            return Math.Max(180d, availableWidth - reservedWidth);
+        }
+
         var isChart = string.Equals(mode, "Chart", StringComparison.OrdinalIgnoreCase);
         var columns = isChart ? GetChartColumns(availableWidth) : GetMetricColumns(availableWidth);
         var width = isChart

@@ -48,7 +48,9 @@ public enum CarrierKind
     UPS,
     FedEx,
     USPS,
-    Amazon
+    Amazon,
+    DHL,
+    OnTrac
 }
 
 public enum MerchantKind

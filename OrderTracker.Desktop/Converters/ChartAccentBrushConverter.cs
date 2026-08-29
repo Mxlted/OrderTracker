@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
 using OrderTracker.Desktop.Models;
+using OrderTracker.Desktop.Utilities;
 
 namespace OrderTracker.Desktop.Converters;
 
@@ -24,6 +25,7 @@ public sealed class ChartAccentBrushConverter : IMultiValueConverter
                 "#7C9BFF" => "#4B63C6",
                 "#E05D5D" => "#C93D4B",
                 "#B389FF" => "#7250B5",
+                "#F57FB0" => "#C93D77",
                 _ => "#516174"
             },
             AppTheme.OLED => accent switch
@@ -34,12 +36,13 @@ public sealed class ChartAccentBrushConverter : IMultiValueConverter
                 "#7C9BFF" => "#8DA6FF",
                 "#E05D5D" => "#FF6B6B",
                 "#B389FF" => "#C29AFF",
+                "#F57FB0" => "#FF7FC2",
                 _ => "#8793A3"
             },
             _ => accent ?? "#6B7A90"
         };
 
-        return (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
+        return BrushCache.Get(color);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

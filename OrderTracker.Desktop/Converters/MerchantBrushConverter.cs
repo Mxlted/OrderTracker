@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
 using OrderTracker.Desktop.Models;
+using OrderTracker.Desktop.Utilities;
 
 namespace OrderTracker.Desktop.Converters;
 
@@ -21,7 +22,7 @@ public sealed class MerchantBrushConverter : IValueConverter
             _ => "#5B6678"
         };
 
-        return (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
+        return BrushCache.Get(color);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

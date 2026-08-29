@@ -7,6 +7,7 @@ public sealed class RelayCommand : ICommand
 {
     private readonly Action<object?> _execute;
     private readonly Predicate<object?>? _canExecute;
+    private EventHandler? _canExecuteChanged;
 
     public RelayCommand(Action<object?> execute, Predicate<object?>? canExecute = null)
     {
@@ -14,7 +15,19 @@ public sealed class RelayCommand : ICommand
         _canExecute = canExecute;
     }
 
-    public event EventHandler? CanExecuteChanged;
+    public event EventHandler? CanExecuteChanged
+    {
+        add
+        {
+            _canExecuteChanged += value;
+            CommandManager.RequerySuggested += value;
+        }
+        remove
+        {
+            _canExecuteChanged -= value;
+            CommandManager.RequerySuggested -= value;
+        }
+    }
 
     public bool CanExecute(object? parameter)
     {
@@ -28,6 +41,6 @@ public sealed class RelayCommand : ICommand
 
     public void RaiseCanExecuteChanged()
     {
-        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        _canExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }

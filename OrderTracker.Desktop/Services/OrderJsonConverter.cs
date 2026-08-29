@@ -116,6 +116,10 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
             {
                 order.Status = ReadEnum(ref reader, order.Status);
             }
+            else if (Matches(propertyName, nameof(Order.StatusBeforeDelivered)))
+            {
+                order.StatusBeforeDelivered = ReadNullableEnum(ref reader, order.StatusBeforeDelivered);
+            }
             else if (Matches(propertyName, nameof(Order.TrackingStatus)))
             {
                 order.TrackingStatus = ReadString(ref reader);
@@ -176,6 +180,11 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         WriteProperty(writer, nameof(Order.ExpectedDate), order.ExpectedDate, options);
         WriteProperty(writer, nameof(Order.DeliveredDate), order.DeliveredDate, options);
         WriteProperty(writer, nameof(Order.Status), order.Status, options);
+        if (order.StatusBeforeDelivered.HasValue)
+        {
+            WriteProperty(writer, "statusBeforeDelivered", order.StatusBeforeDelivered.Value, options);
+        }
+
         writer.WriteString(nameof(Order.TrackingStatus), order.TrackingStatus);
         WriteProperty(writer, nameof(Order.TrackingNumbers), order.TrackingNumbers, options);
         writer.WriteString(nameof(Order.Notes), order.Notes);
@@ -232,15 +241,15 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         }
 
         if (reader.TokenType == JsonTokenType.String &&
-            int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.CurrentCulture, out var currentValue))
-        {
-            return currentValue;
-        }
-
-        if (reader.TokenType == JsonTokenType.String &&
             int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariantValue))
         {
             return invariantValue;
+        }
+
+        if (reader.TokenType == JsonTokenType.String &&
+            int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.CurrentCulture, out var currentValue))
+        {
+            return currentValue;
         }
 
         if (reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject)
@@ -259,15 +268,15 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         }
 
         if (reader.TokenType == JsonTokenType.String &&
-            decimal.TryParse(reader.GetString(), NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue))
-        {
-            return currentValue;
-        }
-
-        if (reader.TokenType == JsonTokenType.String &&
             decimal.TryParse(reader.GetString(), NumberStyles.Currency, CultureInfo.InvariantCulture, out var invariantValue))
         {
             return invariantValue;
+        }
+
+        if (reader.TokenType == JsonTokenType.String &&
+            decimal.TryParse(reader.GetString(), NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue))
+        {
+            return currentValue;
         }
 
         if (reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject)
@@ -298,14 +307,14 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
                 return null;
             }
 
-            if (decimal.TryParse(text, NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue))
-            {
-                return currentValue;
-            }
-
             if (decimal.TryParse(text, NumberStyles.Currency, CultureInfo.InvariantCulture, out var invariantValue))
             {
                 return invariantValue;
+            }
+
+            if (decimal.TryParse(text, NumberStyles.Currency, CultureInfo.CurrentCulture, out var currentValue))
+            {
+                return currentValue;
             }
         }
 
@@ -332,14 +341,14 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         if (reader.TokenType == JsonTokenType.String)
         {
             var text = reader.GetString();
-            if (DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.RoundtripKind, out var currentValue))
-            {
-                return currentValue;
-            }
-
             if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.RoundtripKind, out var invariantValue))
             {
                 return invariantValue;
+            }
+
+            if (DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.RoundtripKind, out var currentValue))
+            {
+                return currentValue;
             }
         }
 
@@ -355,7 +364,7 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
         where TEnum : struct, Enum
     {
         if (reader.TokenType == JsonTokenType.String &&
-            TryReadEnumString(reader.GetString(), out TEnum namedValue))
+            EnumTextParser.TryReadName(reader.GetString(), out TEnum namedValue))
         {
             return namedValue;
         }
@@ -372,57 +381,45 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
             reader.Skip();
         }
 
+        JsonReadDiagnostics.RecordSubstitutedValue();
         return fallback;
     }
 
-    private static bool TryReadEnumString<TEnum>(string? text, out TEnum value)
+    private static TEnum? ReadNullableEnum<TEnum>(ref Utf8JsonReader reader, TEnum? fallback)
         where TEnum : struct, Enum
     {
-        value = default;
-        if (string.IsNullOrWhiteSpace(text))
+        if (reader.TokenType == JsonTokenType.Null)
         {
-            return false;
+            return null;
         }
 
-        if (Enum.TryParse<TEnum>(text, ignoreCase: true, out var parsed) &&
-            Enum.IsDefined(typeof(TEnum), parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        var normalizedText = NormalizeEnumName(text);
-        foreach (var name in Enum.GetNames<TEnum>())
-        {
-            if (string.Equals(NormalizeEnumName(name), normalizedText, StringComparison.OrdinalIgnoreCase) &&
-                Enum.TryParse<TEnum>(name, out parsed))
-            {
-                value = parsed;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string NormalizeEnumName(string value)
-    {
-        return new string(value.Where(char.IsLetterOrDigit).ToArray());
-    }
-
-    private static MerchantKind ReadMerchantKind(ref Utf8JsonReader reader, MerchantKind fallback)
-    {
         if (reader.TokenType == JsonTokenType.String &&
-            string.Equals(reader.GetString(), "Etsy", StringComparison.OrdinalIgnoreCase))
+            EnumTextParser.TryReadName(reader.GetString(), out TEnum namedValue))
         {
-            return MerchantKind.Other;
+            return namedValue;
         }
 
         if (reader.TokenType == JsonTokenType.Number &&
             reader.TryGetInt32(out var numericValue) &&
-            numericValue == 6)
+            Enum.IsDefined(typeof(TEnum), numericValue))
         {
-            return MerchantKind.Other;
+            return (TEnum)Enum.ToObject(typeof(TEnum), numericValue);
+        }
+
+        if (reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject)
+        {
+            reader.Skip();
+        }
+
+        JsonReadDiagnostics.RecordSubstitutedValue();
+        return fallback;
+    }
+
+    private static MerchantKind ReadMerchantKind(ref Utf8JsonReader reader, MerchantKind fallback)
+    {
+        if (MerchantKindJsonConverter.TryReadLegacyValue(ref reader, out var merchant))
+        {
+            return merchant;
         }
 
         return ReadEnum(ref reader, fallback);
@@ -452,14 +449,18 @@ public sealed class OrderJsonConverter : JsonConverter<Order>
                 {
                     collection.Add(value);
                 }
+                else
+                {
+                    JsonReadDiagnostics.RecordSkippedElement();
+                }
             }
             catch (JsonException)
             {
-                // Keep the rest of the order readable if one nested row is malformed.
+                JsonReadDiagnostics.RecordSkippedElement();
             }
             catch (NotSupportedException)
             {
-                // Keep the rest of the order readable if one nested row is malformed.
+                JsonReadDiagnostics.RecordSkippedElement();
             }
         }
 

@@ -30,6 +30,10 @@ public sealed class AppSettings : ObservableObject
     private AccountSortOption _accountSort = AccountSortOption.NameAscending;
     private ItemGroupOption _itemGroup = ItemGroupOption.None;
     private ItemSortOption _itemSort = ItemSortOption.MostUsed;
+    private OrderAttentionFilter _orderAttentionFilter = OrderAttentionFilter.All;
+    private bool _hideCompletedOrders;
+    private OrderSortOption _archiveSort = OrderSortOption.NewestFirst;
+    private bool _dashboardIncludeArchived;
     private double _windowWidth;
     private double _windowHeight;
     private double? _windowLeft;
@@ -158,6 +162,30 @@ public sealed class AppSettings : ObservableObject
     {
         get => _itemSort;
         set => SetProperty(ref _itemSort, value);
+    }
+
+    public OrderAttentionFilter OrderAttentionFilter
+    {
+        get => _orderAttentionFilter;
+        set => SetProperty(ref _orderAttentionFilter, value);
+    }
+
+    public bool HideCompletedOrders
+    {
+        get => _hideCompletedOrders;
+        set => SetProperty(ref _hideCompletedOrders, value);
+    }
+
+    public OrderSortOption ArchiveSort
+    {
+        get => _archiveSort;
+        set => SetProperty(ref _archiveSort, value);
+    }
+
+    public bool DashboardIncludeArchived
+    {
+        get => _dashboardIncludeArchived;
+        set => SetProperty(ref _dashboardIncludeArchived, value);
     }
 
     public double WindowWidth

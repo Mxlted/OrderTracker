@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using OrderTracker.Desktop.Models;
 using OrderTracker.Desktop.Utilities;
@@ -29,6 +30,8 @@ public partial class MainWindow : Window
     private bool _scrollRailBindingsInitialized;
     private bool _responsiveGridBindingsInitialized;
     private bool _isCommandRequeryQueued;
+    private IInputElement? _focusBeforeModal;
+    private int _toastAnimationVersion;
     private WindowState _lastNonMinimizedWindowState = WindowState.Normal;
 
     public static readonly RoutedUICommand FocusSearchCommand = new(
@@ -36,6 +39,11 @@ public partial class MainWindow : Window
         nameof(FocusSearchCommand),
         typeof(MainWindow),
         new InputGestureCollection { new KeyGesture(Key.F, ModifierKeys.Control) });
+
+    public static readonly RoutedUICommand MoveFocusNextCommand = new(
+        "Move focus to next control",
+        nameof(MoveFocusNextCommand),
+        typeof(MainWindow));
 
     private static readonly Dictionary<string, (string Light, string Dark, string Oled)> ThemeBrushes = new()
     {
@@ -50,7 +58,7 @@ public partial class MainWindow : Window
         ["MutedTextBrush"] = ("#516174", "#A5ADB7", "#A2A2A2"),
         ["AccentBrush"] = ("#0078B8", "#58B9F6", "#00AEEF"),
         ["AccentDarkBrush"] = ("#D8F0FB", "#1D4D6F", "#003B5C"),
-        ["SuccessBrush"] = ("#168765", "#2F9E7E", "#33D69F"),
+        ["WarningBrush"] = ("#B45309", "#F0B34A", "#FFD166"),
         ["DangerBrush"] = ("#C93D4B", "#E05D5D", "#FF6B6B"),
         ["DangerSurfaceBrush"] = ("#FBE4E7", "#4C2529", "#2A0E12"),
         ["DataGridHeaderBrush"] = ("#EAF0F6", "#181A1E", "#050505"),
@@ -65,6 +73,7 @@ public partial class MainWindow : Window
         ["ScrollBarThumbHoverBrush"] = ("#5F758E", "#8793A3", "#787878"),
         ["LinkHoverBrush"] = ("#005E92", "#9ADFFF", "#7DE7FF"),
         ["ChipTextBrush"] = ("#FFFFFF", "#0F1114", "#010101"),
+        ["MerchantChipTextBrush"] = ("#101114", "#0F1114", "#010101"),
         ["TrackingChipBrush"] = ("#E6F5FB", "#172838", "#061923"),
         ["TrackingChipBorderBrush"] = ("#96CBE3", "#31526A", "#06485A"),
         ["ModalOverlayBrush"] = ("#66000000", "#99000000", "#B0000000")
@@ -78,12 +87,15 @@ public partial class MainWindow : Window
             FocusSearchCommand,
             FocusSearchExecuted,
             CanFocusSearch));
+        CommandBindings.Add(new CommandBinding(
+            MoveFocusNextCommand,
+            MoveFocusNextExecuted));
         InputBindings.Add(new KeyBinding(_viewModel.NewOrderCommand, Key.N, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(_viewModel.SaveCurrentCommand, Key.S, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(_viewModel.SaveCurrentCommand, Key.Enter, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(_viewModel.CloseCurrentPanelCommand, Key.Escape, ModifierKeys.None));
-        InputBindings.Add(new KeyBinding(FocusSearchCommand, Key.F, ModifierKeys.Control));
         _viewModel.OrderRevealRequested += RevealOrder;
+        _viewModel.ToastRequested += ShowToast;
         _viewModel.Settings.PropertyChanged += SettingsPropertyChanged;
         Loaded += MainWindowLoaded;
         SizeChanged += MainWindowSizeChanged;
@@ -97,13 +109,27 @@ public partial class MainWindow : Window
     {
         StoreWindowPlacement();
         _viewModel.CaptureBrowserLinkWindowPlacement();
-        _viewModel.SaveNow();
+        if (!_viewModel.TrySaveNow(out var error))
+        {
+            var result = MessageBox.Show(
+                this,
+                $"Your changes could not be saved: {error}\n\nClose anyway and lose unsaved changes?",
+                "Save failed",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (result == MessageBoxResult.No)
+            {
+                e.Cancel = true;
+            }
+        }
+
         base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _viewModel.OrderRevealRequested -= RevealOrder;
+        _viewModel.ToastRequested -= ShowToast;
         _viewModel.Settings.PropertyChanged -= SettingsPropertyChanged;
         Loaded -= MainWindowLoaded;
         SizeChanged -= MainWindowSizeChanged;
@@ -129,11 +155,65 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
             var grid = order.IsArchived ? ArchiveGrid : OrdersGrid;
+            grid.Items.Refresh();
+            if (!grid.Items.Contains(order))
+            {
+                _viewModel.LastActionMessage = "That order is hidden by the current filters.";
+                return;
+            }
+
             grid.UpdateLayout();
             grid.SelectedItem = order;
             grid.ScrollIntoView(order);
             grid.Focus();
         }));
+    }
+
+    private void ShowToast(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var animationVersion = ++_toastAnimationVersion;
+        ActionToast.BeginAnimation(OpacityProperty, null);
+        ActionToast.Opacity = 0;
+
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150));
+        fadeIn.Completed += (_, _) =>
+        {
+            if (animationVersion != _toastAnimationVersion)
+            {
+                return;
+            }
+
+            var holdTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromSeconds(3.5)
+            };
+            holdTimer.Tick += (_, _) =>
+            {
+                holdTimer.Stop();
+                if (animationVersion != _toastAnimationVersion)
+                {
+                    return;
+                }
+
+                var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
+                fadeOut.Completed += (_, _) =>
+                {
+                    if (animationVersion == _toastAnimationVersion)
+                    {
+                        ActionToast.BeginAnimation(OpacityProperty, null);
+                        ActionToast.Opacity = 0;
+                    }
+                };
+                ActionToast.BeginAnimation(OpacityProperty, fadeOut, HandoffBehavior.SnapshotAndReplace);
+            };
+            holdTimer.Start();
+        };
+        ActionToast.BeginAnimation(OpacityProperty, fadeIn, HandoffBehavior.SnapshotAndReplace);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -264,6 +344,34 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AccountPresetRowDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not DataGridRow { DataContext: AccountPreset preset } || IsInteractiveElement(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        if (_viewModel.EditAccountPresetCommand.CanExecute(preset))
+        {
+            _viewModel.EditAccountPresetCommand.Execute(preset);
+            e.Handled = true;
+        }
+    }
+
+    private void PresetRowDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not DataGridRow { DataContext: ItemPreset preset } || IsInteractiveElement(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        if (_viewModel.EditPresetCommand.CanExecute(preset))
+        {
+            _viewModel.EditPresetCommand.Execute(preset);
+            e.Handled = true;
+        }
+    }
+
     private void HighlightGridSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         QueueCommandRequery();
@@ -276,12 +384,79 @@ public partial class MainWindow : Window
             return;
         }
 
+        var originalPlacement = menu.Placement;
+        var originalPlacementTarget = menu.PlacementTarget;
+        var originalHorizontalOffset = menu.HorizontalOffset;
+        var originalVerticalOffset = menu.VerticalOffset;
+        RoutedEventHandler? closedHandler = null;
+        closedHandler = (_, _) =>
+        {
+            menu.Closed -= closedHandler;
+            menu.Placement = originalPlacement;
+            menu.PlacementTarget = originalPlacementTarget;
+            menu.HorizontalOffset = originalHorizontalOffset;
+            menu.VerticalOffset = originalVerticalOffset;
+        };
+        menu.Closed += closedHandler;
+
         menu.PlacementTarget = button;
         menu.Placement = PlacementMode.Left;
         menu.HorizontalOffset = -4;
         menu.VerticalOffset = 0;
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    private void SearchBoxPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && sender is TextBox { Text.Length: > 0 } searchBox)
+        {
+            searchBox.Clear();
+            e.Handled = true;
+        }
+    }
+
+    private void ClearSearchButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { TemplatedParent: TextBox searchBox })
+        {
+            searchBox.Clear();
+            searchBox.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private void ModalOverlayIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is not FrameworkElement overlay)
+        {
+            return;
+        }
+
+        if (e.NewValue is true)
+        {
+            _focusBeforeModal = Keyboard.FocusedElement;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+            {
+                var primaryButton = ReferenceEquals(overlay, ConfirmationOverlay)
+                    ? _viewModel.ConfirmationIsDanger
+                        ? ConfirmationDangerConfirmButton
+                        : ConfirmationConfirmButton
+                    : AccountUsageAuditCloseButton;
+                if (primaryButton.IsVisible && primaryButton.IsEnabled)
+                {
+                    primaryButton.Focus();
+                }
+            }));
+            return;
+        }
+
+        var elementToRestore = _focusBeforeModal;
+        _focusBeforeModal = null;
+        if (elementToRestore is not null)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => elementToRestore.Focus()));
+        }
     }
 
     private void CanFocusSearch(object sender, CanExecuteRoutedEventArgs e)
@@ -314,6 +489,16 @@ public partial class MainWindow : Window
     private TextBox? FindNamedTextBox(string name)
     {
         return FindName(name) as TextBox;
+    }
+
+    private void MoveFocusNextExecuted(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (Keyboard.FocusedElement is UIElement focusedElement)
+        {
+            focusedElement.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        }
+
+        e.Handled = true;
     }
 
     private void QueueCommandRequery()
@@ -359,6 +544,7 @@ public partial class MainWindow : Window
             _grid.Loaded += GridLoaded;
             _grid.IsVisibleChanged += GridIsVisibleChanged;
             _grid.SizeChanged += GridSizeChanged;
+            _grid.ItemContainerGenerator.StatusChanged += ItemContainerGeneratorStatusChanged;
             foreach (var column in _grid.Columns)
             {
                 ColumnVisibilityDescriptor?.AddValueChanged(column, ColumnVisibilityChanged);
@@ -372,6 +558,7 @@ public partial class MainWindow : Window
             _grid.Loaded -= GridLoaded;
             _grid.IsVisibleChanged -= GridIsVisibleChanged;
             _grid.SizeChanged -= GridSizeChanged;
+            _grid.ItemContainerGenerator.StatusChanged -= ItemContainerGeneratorStatusChanged;
             foreach (var column in _grid.Columns)
             {
                 ColumnVisibilityDescriptor?.RemoveValueChanged(column, ColumnVisibilityChanged);
@@ -443,6 +630,7 @@ public partial class MainWindow : Window
 
             _grid.ColumnWidth = new DataGridLength(1, DataGridLengthUnitType.Star);
             _isInitialized = true;
+            _grid.ItemContainerGenerator.StatusChanged -= ItemContainerGeneratorStatusChanged;
         }
 
         private void QueueNormalizeVisibleColumns()
@@ -477,7 +665,8 @@ public partial class MainWindow : Window
             return _grid.IsLoaded &&
                    _grid.IsVisible &&
                    _grid.ActualWidth > 0 &&
-                   _grid.Columns.Count > 0;
+                   _grid.Columns.Count > 0 &&
+                   _grid.Items.Count > 0;
         }
 
         private static double GetResponsiveStarWeight(DataGridColumn column)
@@ -523,6 +712,11 @@ public partial class MainWindow : Window
         private void ColumnVisibilityChanged(object? sender, EventArgs e)
         {
             QueueNormalizeVisibleColumns();
+        }
+
+        private void ItemContainerGeneratorStatusChanged(object? sender, EventArgs e)
+        {
+            QueueInitialize(DispatcherPriority.Loaded);
         }
     }
 
@@ -832,22 +1026,6 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private static T? FindVisualParent<T>(DependencyObject? source)
-        where T : DependencyObject
-    {
-        while (source is not null)
-        {
-            if (source is T match)
-            {
-                return match;
-            }
-
-            source = VisualTreeHelper.GetParent(source);
-        }
-
-        return null;
-    }
-
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject source)
         where T : DependencyObject
     {
@@ -972,7 +1150,9 @@ public partial class MainWindow : Window
     {
         if (ColorConverter.ConvertFromString(color) is Color parsed)
         {
-            Resources[resourceKey] = new SolidColorBrush(parsed);
+            var brush = new SolidColorBrush(parsed);
+            brush.Freeze();
+            Resources[resourceKey] = brush;
         }
     }
 

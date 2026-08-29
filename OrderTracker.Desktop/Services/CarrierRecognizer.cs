@@ -11,21 +11,14 @@ public static partial class CarrierRecognizer
     private const string TargetOrderHistoryUrl = "https://www.target.com/orders";
     private const string TargetOrdersBaseUrl = TargetOrderHistoryUrl + "/";
 
-    private static readonly Regex AmazonOrderIdPattern = new(@"^\d{3}-\d{7}-\d{7}$", RegexOptions.Compiled);
-    private static readonly Regex UpsPattern = new(@"^1Z[0-9A-Z]{16}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex AmazonTrackingPattern = new(@"^TBA[A-Z0-9]{9,}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex UspsNumericPattern = new(@"^(92|93|94|95|96)\d{18,20}$", RegexOptions.Compiled);
-    private static readonly Regex UspsInternationalPattern = new(@"^[A-Z]{2}\d{9}US$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex FedExNumericPattern = new(@"^(\d{12}|\d{15}|\d{20}|\d{22})$", RegexOptions.Compiled);
-
     public static string NormalizeTrackingNumber(string value)
     {
-        return Regex.Replace((value ?? string.Empty).Trim(), @"[\s-]+", string.Empty).ToUpperInvariant();
+        return TrackingSeparatorPattern().Replace((value ?? string.Empty).Trim(), string.Empty).ToUpperInvariant();
     }
 
     public static bool IsAmazonOrderId(string value)
     {
-        return AmazonOrderIdPattern.IsMatch((value ?? string.Empty).Trim());
+        return AmazonOrderIdPattern().IsMatch((value ?? string.Empty).Trim());
     }
 
     public static CarrierKind RecognizeCarrier(string value)
@@ -37,58 +30,80 @@ public static partial class CarrierRecognizer
             return CarrierKind.Unknown;
         }
 
-        if (UpsPattern.IsMatch(normalized))
+        if (UpsPattern().IsMatch(normalized))
         {
             return CarrierKind.UPS;
         }
 
-        if (AmazonTrackingPattern.IsMatch(normalized))
+        if (AmazonTrackingPattern().IsMatch(normalized))
         {
             return CarrierKind.Amazon;
         }
 
-        if (UspsNumericPattern.IsMatch(normalized) || UspsInternationalPattern.IsMatch(normalized))
+        if (UspsNumericPattern().IsMatch(normalized) ||
+            UspsCertifiedPattern().IsMatch(normalized) ||
+            UspsInternationalPattern().IsMatch(normalized))
         {
             return CarrierKind.USPS;
         }
 
-        if (FedExNumericPattern.IsMatch(normalized))
+        if (FedExNumericPattern().IsMatch(normalized))
         {
             return CarrierKind.FedEx;
+        }
+
+        if (DhlNumericPattern().IsMatch(normalized) || DhlAlphaNumericPattern().IsMatch(normalized))
+        {
+            return CarrierKind.DHL;
+        }
+
+        if (OnTracPattern().IsMatch(normalized) || LaserShipPattern().IsMatch(normalized))
+        {
+            return CarrierKind.OnTrac;
         }
 
         return CarrierKind.Unknown;
     }
 
-    public static MerchantKind RecognizeMerchant(string merchantText, string orderNumber, IEnumerable<TrackingEntry> trackingNumbers)
+    public static MerchantKind RecognizeMerchant(
+        string orderLink,
+        string orderNumber,
+        IEnumerable<string> itemNames,
+        IEnumerable<TrackingEntry> trackingNumbers,
+        bool includeFreeTextHeuristics)
     {
-        merchantText ??= string.Empty;
+        orderLink ??= string.Empty;
         orderNumber ??= string.Empty;
+        itemNames ??= Enumerable.Empty<string>();
         trackingNumbers ??= Enumerable.Empty<TrackingEntry>();
 
-        if (merchantText.Contains("amazon", StringComparison.OrdinalIgnoreCase) || IsAmazonOrderId(orderNumber))
+        if (MerchantFaviconService.TryRecognizeMerchantFromLink(orderLink, out var linkedMerchant))
+        {
+            return linkedMerchant;
+        }
+
+        if (IsAmazonOrderId(orderNumber))
         {
             return MerchantKind.Amazon;
         }
 
-        if (merchantText.Contains("walmart", StringComparison.OrdinalIgnoreCase))
+        if (!includeFreeTextHeuristics)
         {
-            return MerchantKind.Walmart;
+            return MerchantKind.Unknown;
         }
 
-        if (merchantText.Contains("target", StringComparison.OrdinalIgnoreCase))
+        var merchantMatch = MerchantTextPattern().Match(string.Join(' ', itemNames.Prepend(orderNumber)));
+        if (merchantMatch.Success)
         {
-            return MerchantKind.Target;
-        }
-
-        if (merchantText.Contains("best buy", StringComparison.OrdinalIgnoreCase) || merchantText.Contains("bestbuy", StringComparison.OrdinalIgnoreCase))
-        {
-            return MerchantKind.BestBuy;
-        }
-
-        if (merchantText.Contains("ebay", StringComparison.OrdinalIgnoreCase))
-        {
-            return MerchantKind.eBay;
+            return merchantMatch.Value.ToLowerInvariant() switch
+            {
+                "amazon" => MerchantKind.Amazon,
+                "walmart" => MerchantKind.Walmart,
+                "target" => MerchantKind.Target,
+                "best buy" or "bestbuy" => MerchantKind.BestBuy,
+                "ebay" => MerchantKind.eBay,
+                _ => MerchantKind.Unknown
+            };
         }
 
         if (trackingNumbers.Any(tracking => tracking.Carrier == CarrierKind.Amazon))
@@ -96,13 +111,7 @@ public static partial class CarrierRecognizer
             return MerchantKind.Amazon;
         }
 
-        if (string.IsNullOrWhiteSpace(merchantText) ||
-            merchantText.Equals(nameof(MerchantKind.Unknown), StringComparison.OrdinalIgnoreCase))
-        {
-            return MerchantKind.Unknown;
-        }
-
-        return MerchantKind.Other;
+        return MerchantKind.Unknown;
     }
 
     public static string BuildAmazonOrderUrl(string orderNumber)
@@ -140,14 +149,14 @@ public static partial class CarrierRecognizer
 
     public static string BuildOrderUrl(Order order)
     {
-        if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
-        {
-            return BuildAmazonOrderUrl(order.OrderNumber);
-        }
-
         if (!string.IsNullOrWhiteSpace(order.OrderLink))
         {
             return order.OrderLink.Trim();
+        }
+
+        if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
+        {
+            return BuildAmazonOrderUrl(order.OrderNumber);
         }
 
         if (order.Merchant == MerchantKind.Target && !string.IsNullOrWhiteSpace(order.OrderNumber))
@@ -155,14 +164,16 @@ public static partial class CarrierRecognizer
             return BuildTargetOrderUrl(order.OrderNumber);
         }
 
-        return order.OrderLink.Trim();
+        return string.Empty;
     }
 
     public static string BuildTrackingUrl(Order order, TrackingEntry tracking)
     {
-        if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
+        var normalized = NormalizeTrackingNumber(tracking.Number);
+        var carrierUrl = BuildRecognizedCarrierUrl(order, normalized, RecognizeCarrier(normalized));
+        if (!string.IsNullOrWhiteSpace(carrierUrl))
         {
-            return BuildAmazonOrderUrl(order.OrderNumber);
+            return carrierUrl;
         }
 
         if (!string.IsNullOrWhiteSpace(tracking.Link))
@@ -170,15 +181,12 @@ public static partial class CarrierRecognizer
             return tracking.Link.Trim();
         }
 
-        var normalized = NormalizeTrackingNumber(tracking.Number);
-        return tracking.Carrier switch
+        if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
         {
-            CarrierKind.UPS => $"https://www.ups.com/track?tracknum={Uri.EscapeDataString(normalized)}",
-            CarrierKind.USPS => $"https://tools.usps.com/go/TrackConfirmAction?tLabels={Uri.EscapeDataString(normalized)}",
-            CarrierKind.FedEx => $"https://www.fedex.com/fedextrack/?trknbr={Uri.EscapeDataString(normalized)}",
-            CarrierKind.Amazon when IsAmazonOrderId(order.OrderNumber) => BuildAmazonOrderUrl(order.OrderNumber),
-            _ => order.OrderLink.Trim()
-        };
+            return BuildAmazonOrderUrl(order.OrderNumber);
+        }
+
+        return string.Empty;
     }
 
     public static bool ApplyRecognition(Order order)
@@ -200,12 +208,23 @@ public static partial class CarrierRecognizer
                 tracking.Carrier = carrier;
                 changed = true;
             }
+
+            if (!string.IsNullOrWhiteSpace(tracking.Link) && IsLegacyDerivedTrackingLink(order, tracking, carrier))
+            {
+                tracking.Link = string.Empty;
+                changed = true;
+            }
         }
 
         if (order.Merchant == MerchantKind.Unknown || order.Merchant == MerchantKind.Other)
         {
-            var merchant = RecognizeMerchant(order.Merchant.ToString(), order.OrderNumber, order.TrackingNumbers);
-            if (order.Merchant != merchant)
+            var merchant = RecognizeMerchant(
+                order.OrderLink,
+                order.OrderNumber,
+                order.Items.Select(item => item.Name),
+                order.TrackingNumbers,
+                includeFreeTextHeuristics: order.Merchant == MerchantKind.Unknown);
+            if (merchant is not MerchantKind.Unknown and not MerchantKind.Other && order.Merchant != merchant)
             {
                 order.Merchant = merchant;
                 changed = true;
@@ -215,7 +234,10 @@ public static partial class CarrierRecognizer
         if (order.Merchant == MerchantKind.Amazon && IsAmazonOrderId(order.OrderNumber))
         {
             var orderLink = BuildAmazonOrderUrl(order.OrderNumber);
-            if (!string.Equals(order.OrderLink, orderLink, StringComparison.Ordinal))
+            var shouldSetOrderLink = string.IsNullOrWhiteSpace(order.OrderLink) ||
+                (TryGetCanonicalAmazonOrderId(order.OrderLink, out var linkedOrderNumber) &&
+                 !string.Equals(linkedOrderNumber, order.OrderNumber.Trim(), StringComparison.Ordinal));
+            if (shouldSetOrderLink && !string.Equals(order.OrderLink, orderLink, StringComparison.Ordinal))
             {
                 order.OrderLink = orderLink;
                 changed = true;
@@ -233,16 +255,100 @@ public static partial class CarrierRecognizer
             }
         }
 
-        foreach (var tracking in order.TrackingNumbers)
-        {
-            var link = BuildTrackingUrl(order, tracking);
-            if (!string.Equals(tracking.Link, link, StringComparison.Ordinal))
-            {
-                tracking.Link = link;
-                changed = true;
-            }
-        }
-
         return changed;
     }
+
+    private static string BuildRecognizedCarrierUrl(Order order, string normalized, CarrierKind carrier)
+    {
+        return carrier switch
+        {
+            CarrierKind.UPS => $"https://www.ups.com/track?tracknum={Uri.EscapeDataString(normalized)}",
+            CarrierKind.USPS => $"https://tools.usps.com/go/TrackConfirmAction?tLabels={Uri.EscapeDataString(normalized)}",
+            CarrierKind.FedEx => $"https://www.fedex.com/fedextrack/?trknbr={Uri.EscapeDataString(normalized)}",
+            CarrierKind.Amazon when !IsAmazonOrderId(order.OrderNumber) =>
+                $"https://track.amazon.com/tracking/{Uri.EscapeDataString(normalized)}",
+            CarrierKind.DHL => $"https://www.dhl.com/us-en/home/tracking.html?tracking-id={Uri.EscapeDataString(normalized)}&submit=1",
+            CarrierKind.OnTrac => $"https://www.ontrac.com/tracking/?number={Uri.EscapeDataString(normalized)}",
+            _ => string.Empty
+        };
+    }
+
+    private static bool IsLegacyDerivedTrackingLink(Order order, TrackingEntry tracking, CarrierKind carrier)
+    {
+        var trimmed = tracking.Link.Trim();
+        if (!string.IsNullOrWhiteSpace(order.OrderLink) &&
+            string.Equals(trimmed, order.OrderLink.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var carrierUrl = BuildRecognizedCarrierUrl(order, NormalizeTrackingNumber(tracking.Number), carrier);
+        if (!string.IsNullOrWhiteSpace(carrierUrl) &&
+            string.Equals(trimmed, carrierUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IsAmazonOrderId(order.OrderNumber) &&
+            string.Equals(trimmed, BuildAmazonOrderUrl(order.OrderNumber), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetCanonicalAmazonOrderId(string link, out string orderNumber)
+    {
+        orderNumber = string.Empty;
+        if (!Uri.TryCreate(link.Trim(), UriKind.Absolute, out var uri) ||
+            !uri.Host.Equals("www.amazon.com", StringComparison.OrdinalIgnoreCase) ||
+            !uri.AbsolutePath.Equals("/your-orders/order-details", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        const string queryPrefix = "?orderID=";
+        if (!uri.Query.StartsWith(queryPrefix, StringComparison.OrdinalIgnoreCase) || uri.Query.Contains('&'))
+        {
+            return false;
+        }
+
+        orderNumber = Uri.UnescapeDataString(uri.Query[queryPrefix.Length..]);
+        return IsAmazonOrderId(orderNumber);
+    }
+
+    [GeneratedRegex(@"^[0-9]{3}-[0-9]{7}-[0-9]{7}$")]
+    private static partial Regex AmazonOrderIdPattern();
+
+    [GeneratedRegex(@"^1Z[0-9A-Z]{16}$", RegexOptions.IgnoreCase)]
+    private static partial Regex UpsPattern();
+
+    [GeneratedRegex(@"^TBA[A-Z0-9]{9,}$", RegexOptions.IgnoreCase)]
+    private static partial Regex AmazonTrackingPattern();
+
+    [GeneratedRegex(@"^(92|93|94|95)[0-9]{18}([0-9]{2})?$")]
+    private static partial Regex UspsNumericPattern();
+
+    [GeneratedRegex(@"^(70|71|72|73|77|82|23)[0-9]{18}$")]
+    private static partial Regex UspsCertifiedPattern();
+
+    [GeneratedRegex(@"^[A-Z]{2}[0-9]{9}US$", RegexOptions.IgnoreCase)]
+    private static partial Regex UspsInternationalPattern();
+
+    [GeneratedRegex(@"^([0-9]{12}|[0-9]{15}|[0-9]{20}|[0-9]{22})$")]
+    private static partial Regex FedExNumericPattern();
+
+    [GeneratedRegex(@"^[0-9]{10}$")]
+    private static partial Regex DhlNumericPattern();
+
+    [GeneratedRegex(@"^(JJD|JVGL|GM)[0-9A-Z]{10,}$", RegexOptions.IgnoreCase)]
+    private static partial Regex DhlAlphaNumericPattern();
+
+    [GeneratedRegex(@"^[CD][0-9]{14}$", RegexOptions.IgnoreCase)]
+    private static partial Regex OnTracPattern();
+
+    [GeneratedRegex(@"^(1LS|LS|LX)[0-9]{8,}$", RegexOptions.IgnoreCase)]
+    private static partial Regex LaserShipPattern();
+
+    [GeneratedRegex(@"[\s-]+")]
+    private static partial Regex TrackingSeparatorPattern();
+
+    [GeneratedRegex(@"\b(amazon|walmart|target|best ?buy|ebay)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex MerchantTextPattern();
 }

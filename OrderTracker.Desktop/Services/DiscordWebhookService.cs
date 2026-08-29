@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using OrderTracker.Desktop.Models;
 
@@ -13,10 +15,17 @@ namespace OrderTracker.Desktop.Services;
 public sealed class DiscordWebhookService
 {
     private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(15);
+    private static readonly HttpClient HttpClient = new()
+    {
+        Timeout = SendTimeout
+    };
 
     private const int DiscordDescriptionLimit = 4096;
     private const int DiscordFieldNameLimit = 256;
     private const int DiscordFieldValueLimit = 1024;
+    private const int DiscordFieldCountLimit = 25;
+    private const int DiscordEmbedCharacterLimit = 6000;
+    private const int DiscordErrorDetailLimit = 120;
     private const int TopMerchantLimit = 5;
     private const int AttentionExampleLimit = 3;
     private const int AttentionExampleLineLimit = 96;
@@ -24,11 +33,10 @@ public sealed class DiscordWebhookService
     private const int EmbedColorHealthy = 0x57F287;
     private const int EmbedColorWarning = 0xFAA61A;
     private const int EmbedColorCritical = 0xED4245;
-
-    private readonly HttpClient _httpClient = new()
-    {
-        Timeout = SendTimeout
-    };
+    private const string EmbedTitle = "📦 Order Tracker Summary";
+    private const string EmbedFooter = "Order Tracker desktop overview";
+    private const int TopMerchantsDropPriority = 0;
+    private const int NeedsAttentionDropPriority = 1;
 
     public async Task<string> SendStatsAsync(IEnumerable<Order> orders, AppSettings settings)
     {
@@ -62,8 +70,8 @@ public sealed class DiscordWebhookService
             .ToList();
         var openBalance = openOrders.Sum(order => order.TotalCost);
         var totalSpend = orderList.Sum(order => order.TotalCost);
-        var monthOrders = GetCurrentMonthOrders(orderList);
-        var yearOrders = GetCurrentYearOrders(orderList);
+        var monthOrders = GetCurrentMonthOrders(orderList, today);
+        var yearOrders = GetCurrentYearOrders(orderList, today);
         var monthSpend = monthOrders.Sum(order => order.TotalCost);
         var yearSpend = yearOrders.Sum(order => order.TotalCost);
         var projectedMonthRoi = CalculateProjectedRoi(monthOrders, settings);
@@ -72,13 +80,22 @@ public sealed class DiscordWebhookService
         var nextExpectedDate = GetNextExpectedDate(openOrders, today);
         var color = GetEmbedColor(orderList.Count, overdue, delayed, openMissingTracking);
 
-        var fields = new List<object>();
+        var fields = new List<DiscordEmbedField>();
         AddField(fields, "📦 Orders", BuildOrdersSummary(open, deliveredThisMonth, attentionOrders.Count, orderList.Count), inline: true);
         AddField(fields, "💰 Spend", BuildSpendSummary(monthSpend, totalSpend, openBalance), inline: true);
         AddField(fields, "📈 Projected ROI", BuildProjectedRoi(monthSpend, yearSpend, projectedMonthRoi, projectedYearRoi), inline: true);
         AddField(fields, "🚚 Tracking", BuildTrackingSummary(orderList.Count, trackedOrders, openMissingTracking, nextExpectedDate), inline: true);
-        AddField(fields, "⚠️ Needs Attention", BuildAttentionSummary(attentionOrders, overdue, delayed, openMissingTracking, today));
-        AddField(fields, "🏪 Top Merchants", BuildTopMerchants(orderList));
+        AddField(
+            fields,
+            "⚠️ Needs Attention",
+            BuildAttentionSummary(attentionOrders, overdue, delayed, openMissingTracking, today),
+            dropPriority: NeedsAttentionDropPriority);
+        AddField(fields, "🏪 Top Merchants", BuildTopMerchants(orderList), dropPriority: TopMerchantsDropPriority);
+
+        var description = Truncate(
+            BuildOverview(open, openBalance, deliveredThisMonth, projectedMonthRoi, attentionOrders.Count),
+            DiscordDescriptionLimit);
+        EnforceEmbedLimits(fields, ref description);
 
         var payload = JsonSerializer.Serialize(new
         {
@@ -91,15 +108,13 @@ public sealed class DiscordWebhookService
             {
                 new
                 {
-                    title = "📦 Order Tracker Summary",
-                    description = Truncate(
-                        BuildOverview(open, openBalance, deliveredThisMonth, projectedMonthRoi, attentionOrders.Count),
-                        DiscordDescriptionLimit),
+                    title = EmbedTitle,
+                    description,
                     color,
                     fields = fields.ToArray(),
                     footer = new
                     {
-                        text = "Order Tracker desktop overview"
+                        text = EmbedFooter
                     },
                     timestamp = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture)
                 }
@@ -108,11 +123,26 @@ public sealed class DiscordWebhookService
 
         try
         {
-            using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-            using var response = await _httpClient.PostAsync(webhookUri, content).ConfigureAwait(false);
-            return response.IsSuccessStatusCode
-                ? "Discord stats sent."
-                : $"Discord returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+            for (var attempt = 0; attempt <= 2; attempt++)
+            {
+                using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var response = await HttpClient.PostAsync(webhookUri, content).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return "Discord stats sent.";
+                }
+
+                var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt < 2)
+                {
+                    await Task.Delay(GetRetryDelay(response, responseBody)).ConfigureAwait(false);
+                    continue;
+                }
+
+                return BuildErrorMessage(response, responseBody);
+            }
+
+            return "Discord send failed. Check the webhook URL or network connection.";
         }
         catch (TaskCanceledException)
         {
@@ -124,14 +154,150 @@ public sealed class DiscordWebhookService
         }
     }
 
-    private static void AddField(List<object> fields, string name, string value, bool inline = false)
+    private static void AddField(
+        List<DiscordEmbedField> fields,
+        string name,
+        string value,
+        bool inline = false,
+        int? dropPriority = null)
     {
-        fields.Add(new
+        fields.Add(new DiscordEmbedField(
+            Truncate(name, DiscordFieldNameLimit),
+            Truncate(string.IsNullOrWhiteSpace(value) ? "No data yet." : value, DiscordFieldValueLimit),
+            inline,
+            dropPriority));
+    }
+
+    private static void EnforceEmbedLimits(List<DiscordEmbedField> fields, ref string description)
+    {
+        while (fields.Count > DiscordFieldCountLimit || GetEmbedCharacterCount(fields, description) > DiscordEmbedCharacterLimit)
         {
-            name = Truncate(name, DiscordFieldNameLimit),
-            value = Truncate(string.IsNullOrWhiteSpace(value) ? "No data yet." : value, DiscordFieldValueLimit),
-            inline
-        });
+            var fieldToDrop = fields
+                .Where(field => field.DropPriority.HasValue)
+                .OrderBy(field => field.DropPriority)
+                .FirstOrDefault();
+            if (fieldToDrop is null)
+            {
+                break;
+            }
+
+            fields.Remove(fieldToDrop);
+        }
+
+        if (fields.Count > DiscordFieldCountLimit)
+        {
+            fields.RemoveRange(DiscordFieldCountLimit, fields.Count - DiscordFieldCountLimit);
+        }
+
+        var characterCountWithoutDescription = GetEmbedCharacterCount(fields, string.Empty);
+        var maximumDescriptionLength = Math.Max(0, DiscordEmbedCharacterLimit - characterCountWithoutDescription);
+        description = TruncateWithEllipsis(description, maximumDescriptionLength);
+    }
+
+    private static int GetEmbedCharacterCount(IEnumerable<DiscordEmbedField> fields, string description)
+    {
+        return EmbedTitle.Length +
+            description.Length +
+            EmbedFooter.Length +
+            fields.Sum(field => field.Name.Length + field.Value.Length);
+    }
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage response, string responseBody)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("retry_after", out var retryAfter))
+            {
+                var seconds = retryAfter.ValueKind switch
+                {
+                    JsonValueKind.Number when retryAfter.TryGetDouble(out var numericValue) => numericValue,
+                    JsonValueKind.String when double.TryParse(
+                        retryAfter.GetString(),
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var textValue) => textValue,
+                    _ => 0d
+                };
+
+                if (seconds > 0d && seconds <= TimeSpan.MaxValue.TotalSeconds)
+                {
+                    return TimeSpan.FromSeconds(seconds);
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Fall back to the Retry-After header or the default delay.
+        }
+
+        if (response.Headers.RetryAfter?.Delta is TimeSpan delta && delta > TimeSpan.Zero)
+        {
+            return delta;
+        }
+
+        if (response.Headers.RetryAfter?.Date is DateTimeOffset retryDate)
+        {
+            var delay = retryDate - DateTimeOffset.UtcNow;
+            if (delay > TimeSpan.Zero)
+            {
+                return delay;
+            }
+        }
+
+        return TimeSpan.FromSeconds(2);
+    }
+
+    private static string BuildErrorMessage(HttpResponseMessage response, string responseBody)
+    {
+        var status = $"Discord returned {(int)response.StatusCode} {response.ReasonPhrase}";
+        var details = GetErrorDetails(responseBody);
+        return string.IsNullOrWhiteSpace(details)
+            ? $"{status}."
+            : $"{status}: {details}.";
+    }
+
+    private static string GetErrorDetails(string responseBody)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            if (root.TryGetProperty("message", out var message))
+            {
+                var messageText = message.ValueKind == JsonValueKind.String
+                    ? message.GetString()
+                    : message.GetRawText();
+                if (!string.IsNullOrWhiteSpace(messageText))
+                {
+                    parts.Add($"Message: {CleanSingleLine(messageText)}");
+                }
+            }
+
+            if (root.TryGetProperty("code", out var code))
+            {
+                var codeText = code.ValueKind == JsonValueKind.String
+                    ? code.GetString()
+                    : code.GetRawText();
+                if (!string.IsNullOrWhiteSpace(codeText))
+                {
+                    parts.Add($"Code: {CleanSingleLine(codeText)}");
+                }
+            }
+
+            return Truncate(string.Join(" ", parts), DiscordErrorDetailLimit);
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
+        }
     }
 
     private static string BuildOverview(
@@ -304,9 +470,8 @@ public sealed class DiscordWebhookService
                 $"{index + 1}. {FormatEnum(group.Key)} — **{FormatMoney(group.Sum(order => order.TotalCost))}** · {FormatOrderCount(group.Count())}"));
     }
 
-    private static IReadOnlyList<Order> GetCurrentMonthOrders(IEnumerable<Order> orders)
+    private static IReadOnlyList<Order> GetCurrentMonthOrders(IEnumerable<Order> orders, DateTime today)
     {
-        var today = DateTime.Today;
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
         return orders
@@ -314,9 +479,8 @@ public sealed class DiscordWebhookService
             .ToList();
     }
 
-    private static IReadOnlyList<Order> GetCurrentYearOrders(IEnumerable<Order> orders)
+    private static IReadOnlyList<Order> GetCurrentYearOrders(IEnumerable<Order> orders, DateTime today)
     {
-        var today = DateTime.Today;
         var yearStart = new DateTime(today.Year, 1, 1);
         var yearEnd = yearStart.AddYears(1);
         return orders
@@ -500,5 +664,54 @@ public sealed class DiscordWebhookService
         }
 
         return string.Concat(value.AsSpan(0, contentLength), "...");
+    }
+
+    private static string TruncateWithEllipsis(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        if (maxLength <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (maxLength == 1)
+        {
+            return "…";
+        }
+
+        var contentLength = maxLength - 1;
+        if (char.IsHighSurrogate(value[contentLength - 1]))
+        {
+            contentLength--;
+        }
+
+        return string.Concat(value.AsSpan(0, contentLength), "…");
+    }
+
+    private sealed class DiscordEmbedField
+    {
+        public DiscordEmbedField(string name, string value, bool inline, int? dropPriority)
+        {
+            Name = name;
+            Value = value;
+            Inline = inline;
+            DropPriority = dropPriority;
+        }
+
+        [JsonPropertyName("name")]
+        public string Name { get; }
+
+        [JsonPropertyName("value")]
+        public string Value { get; }
+
+        [JsonPropertyName("inline")]
+        public bool Inline { get; }
+
+        [JsonIgnore]
+        public int? DropPriority { get; }
     }
 }

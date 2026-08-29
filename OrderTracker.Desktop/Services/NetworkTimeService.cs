@@ -13,31 +13,30 @@ public sealed class NetworkTimeService
     private const int NtpPort = 123;
     private const int NtpPacketLength = 48;
     private const byte ClientRequestHeader = 0x1B;
+    private static readonly string[] NtpHosts = { "time.nist.gov", "pool.ntp.org", "time.windows.com" };
+    private static readonly TimeSpan HostTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan MaximumClockDifference = TimeSpan.FromDays(365);
     private static readonly DateTimeOffset NtpEpoch = new(1900, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private TimeSpan? _lastOffset;
 
-    public async Task<DateTimeOffset?> TryGetUtcTimeAsync(string host = "time.nist.gov", int timeoutMilliseconds = 2500)
+    public TimeSpan? LastOffset => _lastOffset;
+
+    public async Task<DateTimeOffset?> TryGetUtcTimeAsync()
     {
-        try
+        foreach (var host in NtpHosts)
         {
-            using var cancellation = new CancellationTokenSource(timeoutMilliseconds);
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            var request = new byte[NtpPacketLength];
-            var response = new byte[NtpPacketLength];
-            request[0] = ClientRequestHeader;
-
-            var endpoint = await ResolveEndpointAsync(host, cancellation.Token);
-            await socket.ConnectAsync(endpoint, cancellation.Token);
-            await socket.SendAsync(request, SocketFlags.None, cancellation.Token);
-            var received = await socket.ReceiveAsync(response, SocketFlags.None, cancellation.Token);
-
-            return received >= NtpPacketLength
-                ? ReadTimestamp(response, 40)
-                : null;
+            var networkTime = await TryGetHostUtcTimeAsync(host);
+            if (networkTime.HasValue)
+            {
+                var localUtcNow = DateTimeOffset.UtcNow;
+                _lastOffset = networkTime.Value - localUtcNow;
+                return networkTime;
+            }
         }
-        catch
-        {
-            return null;
-        }
+
+        return _lastOffset.HasValue
+            ? DateTimeOffset.UtcNow + _lastOffset.Value
+            : null;
     }
 
     private static async Task<IPEndPoint> ResolveEndpointAsync(string host, CancellationToken cancellationToken)
@@ -52,6 +51,44 @@ public sealed class NetworkTimeService
         }
 
         return new IPEndPoint(address, NtpPort);
+    }
+
+    private static async Task<DateTimeOffset?> TryGetHostUtcTimeAsync(string host)
+    {
+        try
+        {
+            using var cancellation = new CancellationTokenSource(HostTimeout);
+            var endpoint = await ResolveEndpointAsync(host, cancellation.Token);
+            using var socket = new Socket(endpoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            var request = new byte[NtpPacketLength];
+            var response = new byte[NtpPacketLength];
+            request[0] = ClientRequestHeader;
+
+            await socket.ConnectAsync(endpoint, cancellation.Token);
+            await socket.SendAsync(request, SocketFlags.None, cancellation.Token);
+            var received = await socket.ReceiveAsync(response, SocketFlags.None, cancellation.Token);
+            if (received < NtpPacketLength ||
+                (response[0] & 0x07) != 4 ||
+                response[1] == 0)
+            {
+                return null;
+            }
+
+            var seconds = BinaryPrimitives.ReadUInt32BigEndian(response.AsSpan(40, 4));
+            if (seconds == 0)
+            {
+                return null;
+            }
+
+            var timestamp = ReadTimestamp(response, 40);
+            return (timestamp - DateTimeOffset.UtcNow).Duration() <= MaximumClockDifference
+                ? timestamp
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static DateTimeOffset ReadTimestamp(byte[] buffer, int start)

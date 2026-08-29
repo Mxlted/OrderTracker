@@ -10,6 +10,7 @@ public static partial class EnumDisplayFormatter
         return value switch
         {
             MerchantKind.eBay => "eBay",
+            CarrierKind.OnTrac => "OnTrac",
             _ => SplitPascalCase().Replace(value.ToString(), "$1 $2")
         };
     }

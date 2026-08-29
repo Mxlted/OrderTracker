@@ -1,10 +1,38 @@
 using System;
 using System.Globalization;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace OrderTracker.Desktop.Services;
+
+internal static class JsonReadDiagnostics
+{
+    [ThreadStatic]
+    private static int _skippedElements;
+
+    [ThreadStatic]
+    private static int _substitutedValues;
+
+    public static int SkippedElements => _skippedElements;
+
+    public static int SubstitutedValues => _substitutedValues;
+
+    public static void Reset()
+    {
+        _skippedElements = 0;
+        _substitutedValues = 0;
+    }
+
+    public static void RecordSkippedElement()
+    {
+        _skippedElements++;
+    }
+
+    public static void RecordSubstitutedValue()
+    {
+        _substitutedValues++;
+    }
+}
 
 public sealed class SafeEnumJsonConverter<TEnum> : JsonConverter<TEnum>
     where TEnum : struct, Enum
@@ -20,12 +48,24 @@ public sealed class SafeEnumJsonConverter<TEnum> : JsonConverter<TEnum>
     {
         if (reader.TokenType == JsonTokenType.String)
         {
-            return TryReadString(reader.GetString(), out var value) ? value : _fallback;
+            if (TryReadString(reader.GetString(), out var value))
+            {
+                return value;
+            }
+
+            JsonReadDiagnostics.RecordSubstitutedValue();
+            return _fallback;
         }
 
         if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt64(out var numericValue))
         {
-            return TryReadNumber(numericValue, out var value) ? value : _fallback;
+            if (TryReadNumber(numericValue, out var value))
+            {
+                return value;
+            }
+
+            JsonReadDiagnostics.RecordSubstitutedValue();
+            return _fallback;
         }
 
         if (reader.TokenType is JsonTokenType.StartArray or JsonTokenType.StartObject)
@@ -33,6 +73,7 @@ public sealed class SafeEnumJsonConverter<TEnum> : JsonConverter<TEnum>
             reader.Skip();
         }
 
+        JsonReadDiagnostics.RecordSubstitutedValue();
         return _fallback;
     }
 
@@ -49,27 +90,14 @@ public sealed class SafeEnumJsonConverter<TEnum> : JsonConverter<TEnum>
             return false;
         }
 
-        if (Enum.TryParse<TEnum>(text, ignoreCase: true, out var parsed) &&
-            Enum.IsDefined(typeof(TEnum), parsed))
+        if (EnumTextParser.TryReadName(text, out value))
         {
-            value = parsed;
             return true;
         }
 
         if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numericValue))
         {
             return TryReadNumber(numericValue, out value);
-        }
-
-        var normalizedText = NormalizeEnumName(text);
-        foreach (var name in Enum.GetNames<TEnum>())
-        {
-            if (string.Equals(NormalizeEnumName(name), normalizedText, StringComparison.OrdinalIgnoreCase) &&
-                Enum.TryParse<TEnum>(name, out parsed))
-            {
-                value = parsed;
-                return true;
-            }
         }
 
         return false;
@@ -86,10 +114,5 @@ public sealed class SafeEnumJsonConverter<TEnum> : JsonConverter<TEnum>
 
         value = (TEnum)Enum.ToObject(typeof(TEnum), (int)numericValue);
         return true;
-    }
-
-    private static string NormalizeEnumName(string value)
-    {
-        return new string(value.Where(char.IsLetterOrDigit).ToArray());
     }
 }

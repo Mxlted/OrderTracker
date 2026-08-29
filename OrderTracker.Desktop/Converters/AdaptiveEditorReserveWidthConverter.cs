@@ -10,7 +10,7 @@ public sealed class AdaptiveEditorReserveWidthConverter : IMultiValueConverter
     {
         if (values.Length < 2 || values[0] is not double availableWidth || values[1] is not bool isOpen || !isOpen)
         {
-            return new GridLength(0);
+            return targetType == typeof(Visibility) ? Visibility.Collapsed : new GridLength(0);
         }
 
         var parts = (parameter?.ToString() ?? string.Empty).Split(',');
@@ -21,9 +21,13 @@ public sealed class AdaptiveEditorReserveWidthConverter : IMultiValueConverter
             ? parsedMinimumGridWidth
             : 900d;
 
-        return double.IsFinite(availableWidth) && availableWidth - editorWidth >= minimumGridWidth
-            ? new GridLength(editorWidth)
-            : new GridLength(0);
+        var hasReservedWidth = double.IsFinite(availableWidth) && availableWidth - editorWidth >= minimumGridWidth;
+        if (targetType == typeof(Visibility))
+        {
+            return hasReservedWidth ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        return hasReservedWidth ? new GridLength(editorWidth) : new GridLength(0);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

@@ -7,6 +7,7 @@
              xmlns:util="clr-namespace:OrderTracker.Desktop.Utilities"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
+        <!-- Fallback colors for the scrollbar templates below; MainWindow.ApplyTheme overwrites these with themed brushes at runtime. -->
         <SolidColorBrush x:Key="BorderBrush" Color="#343A42"/>
         <SolidColorBrush x:Key="AccentBrush" Color="#58B9F6"/>
         <SolidColorBrush x:Key="ScrollBarTrackBrush" Color="#1E2227"/>

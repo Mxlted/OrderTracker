@@ -7,12 +7,21 @@ namespace OrderTracker.Desktop.Services;
 public sealed class MerchantFaviconService
 {
     private static readonly string[] SupportedExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".gif", ".bmp" };
+    private static readonly IReadOnlyDictionary<MerchantKind, string> MerchantDomains =
+        new Dictionary<MerchantKind, string>
+        {
+            [MerchantKind.Amazon] = "amazon.com",
+            [MerchantKind.Walmart] = "walmart.com",
+            [MerchantKind.Target] = "target.com",
+            [MerchantKind.BestBuy] = "bestbuy.com",
+            [MerchantKind.eBay] = "ebay.com"
+        };
 
     private static readonly HttpClient HttpClient = CreateHttpClient();
 
     public MerchantFaviconService()
     {
-        CacheFolder = Path.Combine(GetAppDataFolder(), "merchant-icons");
+        CacheFolder = AppPaths.IconCacheFolder;
     }
 
     public string CacheFolder { get; }
@@ -21,7 +30,7 @@ public sealed class MerchantFaviconService
 
     public static string? FindCachedIconPath(MerchantKind merchant)
     {
-        var folder = Path.Combine(GetAppDataFolder(), "merchant-icons");
+        var folder = AppPaths.IconCacheFolder;
         var stem = GetCacheStem(merchant);
         if (string.IsNullOrWhiteSpace(stem) || !Directory.Exists(folder))
         {
@@ -35,9 +44,16 @@ public sealed class MerchantFaviconService
 
     public async Task<bool> EnsureIconAsync(MerchantKind merchant, CancellationToken cancellationToken = default)
     {
-        if (!CanFetch(merchant) || FindCachedIconPath(merchant) is not null || File.Exists(GetFailedMarkerPath(merchant)))
+        var cachedIconPath = FindCachedIconPath(merchant);
+        if (!CanFetch(merchant) || cachedIconPath is not null)
         {
-            return FindCachedIconPath(merchant) is not null;
+            return cachedIconPath is not null;
+        }
+
+        var failedMarkerPath = GetFailedMarkerPath(merchant);
+        if (HasRecentFailedMarker(failedMarkerPath))
+        {
+            return false;
         }
 
         Directory.CreateDirectory(CacheFolder);
@@ -58,7 +74,7 @@ public sealed class MerchantFaviconService
                     continue;
                 }
 
-                var extension = GetExtension(response.Content.Headers.ContentType?.MediaType, uri);
+                var extension = GetExtension(bytes);
                 if (extension is null)
                 {
                     continue;
@@ -67,16 +83,28 @@ public sealed class MerchantFaviconService
                 RemoveCachedIconFiles(merchant);
                 var iconPath = Path.Combine(CacheFolder, $"{GetCacheStem(merchant)}{extension}");
                 await File.WriteAllBytesAsync(iconPath, bytes, cancellationToken);
-                TryDelete(GetFailedMarkerPath(merchant));
+                TryDelete(failedMarkerPath);
                 return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
-                // The failed marker below prevents repeated network attempts until the cache is cleared.
+                // Try the next favicon source before caching the failure.
             }
         }
 
-        await File.WriteAllTextAsync(GetFailedMarkerPath(merchant), DateTimeOffset.Now.ToString("O"), cancellationToken);
+        try
+        {
+            await File.WriteAllTextAsync(failedMarkerPath, DateTimeOffset.Now.ToString("O"), CancellationToken.None);
+        }
+        catch
+        {
+            // A marker write failure should not interrupt normal app use.
+        }
+
         return false;
     }
 
@@ -107,6 +135,27 @@ public sealed class MerchantFaviconService
         return GetFaviconUris(merchant).Length > 0;
     }
 
+    public static bool TryRecognizeMerchantFromLink(string link, out MerchantKind merchant)
+    {
+        merchant = MerchantKind.Unknown;
+        if (!Uri.TryCreate(link?.Trim(), UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        foreach (var pair in MerchantDomains)
+        {
+            var brand = pair.Value[..pair.Value.IndexOf('.')];
+            if (uri.Host.Contains($"{brand}.", StringComparison.OrdinalIgnoreCase))
+            {
+                merchant = pair.Key;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static HttpClient CreateHttpClient()
     {
         var httpClient = new HttpClient
@@ -118,35 +167,18 @@ public sealed class MerchantFaviconService
         return httpClient;
     }
 
-    private static string GetAppDataFolder()
-    {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "OrderTrackerDesktop");
-    }
-
     private static Uri[] GetFaviconUris(MerchantKind merchant)
     {
-        return merchant switch
-        {
-            MerchantKind.Amazon => new[] { new Uri("https://www.amazon.com/favicon.ico") },
-            MerchantKind.Walmart => new[] { new Uri("https://www.walmart.com/favicon.ico") },
-            MerchantKind.Target => new[] { new Uri("https://www.target.com/favicon.ico") },
-            MerchantKind.BestBuy => new[] { new Uri("https://www.bestbuy.com/favicon.ico") },
-            MerchantKind.eBay => new[] { new Uri("https://www.ebay.com/favicon.ico") },
-            _ => Array.Empty<Uri>()
-        };
+        return MerchantDomains.TryGetValue(merchant, out var domain)
+            ? new[] { new Uri($"https://www.{domain}/favicon.ico") }
+            : Array.Empty<Uri>();
     }
 
     private static string GetCacheStem(MerchantKind merchant)
     {
-        return merchant switch
-        {
-            MerchantKind.BestBuy => "bestbuy",
-            MerchantKind.eBay => "ebay",
-            MerchantKind.Amazon or MerchantKind.Walmart or MerchantKind.Target => merchant.ToString().ToLowerInvariant(),
-            _ => string.Empty
-        };
+        return MerchantDomains.TryGetValue(merchant, out var domain)
+            ? domain[..domain.IndexOf('.')]
+            : string.Empty;
     }
 
     private string GetFailedMarkerPath(MerchantKind merchant)
@@ -154,28 +186,52 @@ public sealed class MerchantFaviconService
         return Path.Combine(CacheFolder, $"{GetCacheStem(merchant)}.failed");
     }
 
-    private static string? GetExtension(string? mediaType, Uri uri)
+    private static string? GetExtension(ReadOnlySpan<byte> bytes)
     {
-        var normalizedMediaType = mediaType?.ToLowerInvariant();
-        if (!string.IsNullOrWhiteSpace(normalizedMediaType) &&
-            !normalizedMediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
-            normalizedMediaType != "application/octet-stream")
+        if (bytes.StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47 }))
         {
-            return null;
+            return ".png";
         }
 
-        var extension = normalizedMediaType switch
+        if (bytes.StartsWith(new byte[] { 0x00, 0x00, 0x01, 0x00 }))
         {
-            "image/png" => ".png",
-            "image/x-icon" or "image/vnd.microsoft.icon" or "image/icon" => ".ico",
-            "image/jpeg" or "image/jpg" => ".jpg",
-            "image/gif" => ".gif",
-            "image/bmp" => ".bmp",
-            _ => null
-        };
+            return ".ico";
+        }
 
-        extension ??= Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
-        return SupportedExtensions.Contains(extension) ? extension : null;
+        if (bytes.StartsWith(new byte[] { 0xFF, 0xD8, 0xFF }))
+        {
+            return ".jpg";
+        }
+
+        if (bytes.StartsWith("GIF8"u8))
+        {
+            return ".gif";
+        }
+
+        return bytes.StartsWith("BM"u8) ? ".bmp" : null;
+    }
+
+    private static bool HasRecentFailedMarker(string markerPath)
+    {
+        if (!File.Exists(markerPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (File.GetLastWriteTimeUtc(markerPath) >= DateTime.UtcNow.AddHours(-24))
+            {
+                return true;
+            }
+        }
+        catch
+        {
+            // Treat unreadable markers as stale so the fetch can be retried.
+        }
+
+        TryDelete(markerPath);
+        return false;
     }
 
     private void RemoveCachedIconFiles(MerchantKind merchant)
